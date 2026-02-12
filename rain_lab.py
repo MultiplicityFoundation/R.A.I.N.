@@ -52,6 +52,8 @@ def _spinner(message: str, duration_s: float = 0.9) -> None:
         time.sleep(0.08)
     print(f"\r{ANSI_GREEN}✔ {message}{ANSI_RESET}")
 
+from pathlib import Path
+
 
 def _split_passthrough_args(argv: list[str]) -> tuple[list[str], list[str]]:
     if "--" in argv:
@@ -125,6 +127,7 @@ def main(argv: list[str] | None = None) -> int:
     _print_banner()
     _spinner("Booting VERS3DYNAMICS R.A.I.N. Lab launcher")
     print(f"{ANSI_CYAN}Launching mode={args.mode}: {' '.join(cmd)}{ANSI_RESET}", flush=True)
+    print(f"Launching mode={args.mode}: {' '.join(cmd)}")
     result = subprocess.run(cmd, env=child_env)
     return int(result.returncode)
 
