@@ -62,6 +62,19 @@ y = 2
         assert len(blocks) == 1
         assert "y = 2" in blocks[0]
 
+
+    def test_python_blocks_used_as_fallback_when_no_repl_blocks(self):
+        text = """Python block:
+```python
+x = 1
+print(x)
+```
+"""
+        blocks = find_code_blocks(text)
+        assert len(blocks) == 1
+        assert "x = 1" in blocks[0]
+        assert "print(x)" in blocks[0]
+
     def test_multiline_code_block(self):
         text = """```repl
 def factorial(n):

@@ -13,17 +13,20 @@ if TYPE_CHECKING:
 
 def find_code_blocks(text: str) -> list[str]:
     """
-    Find REPL code blocks in text wrapped in triple backticks and return List of content(s).
-    Returns None if no code blocks are found.
+    Find executable code blocks wrapped in triple backticks and return their content.
+
+    We prefer explicit ``repl`` blocks. If none are present, we fall back to ``python``
+    blocks for model compatibility, since some models emit ``python`` fences despite the
+    REPL instructions.
     """
-    pattern = r"```(?:repl|python)\s*\n(.*?)\n```"
-    results = []
+    repl_pattern = r"```repl\s*\n(.*?)\n```"
+    python_pattern = r"```python\s*\n(.*?)\n```"
 
-    for match in re.finditer(pattern, text, re.DOTALL):
-        code_content = match.group(1).strip()
-        results.append(code_content)
+    repl_matches = [match.group(1).strip() for match in re.finditer(repl_pattern, text, re.DOTALL)]
+    if repl_matches:
+        return repl_matches
 
-    return results
+    return [match.group(1).strip() for match in re.finditer(python_pattern, text, re.DOTALL)]
 
 
 def find_final_answer(text: str, environment: "BaseEnv | None" = None) -> str | None:
