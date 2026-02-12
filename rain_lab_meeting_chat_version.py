@@ -68,7 +68,7 @@ class Config:
     api_key: str = os.environ.get("LM_STUDIO_API_KEY", "lm-studio")
     model_name: str = DEFAULT_MODEL_NAME
     max_tokens: int = 200  # Enough tokens for agents to complete their thoughts
-    timeout: float = 120.0  # Increased timeout for slower inference
+    timeout: float = float(os.environ.get("RAIN_LM_TIMEOUT", "300"))
     max_retries: int = 2
     recursive_intellect: bool = os.environ.get("RAIN_RECURSIVE_INTELLECT", "1") != "0"
     recursive_depth: int = int(os.environ.get("RAIN_RECURSIVE_DEPTH", "2"))
@@ -697,8 +697,14 @@ class RainLabOrchestrator:
         # LLM client with extended timeout for large context processing
         try:
             import httpx
-            # Use httpx.Timeout: reduced for faster failure detection
-            custom_timeout = httpx.Timeout(10.0, read=120.0, write=10.0, connect=10.0)
+            # Allow configurable read timeout for slower local models / larger contexts
+            connect_timeout = min(15.0, self.config.timeout)
+            custom_timeout = httpx.Timeout(
+                connect_timeout,
+                read=self.config.timeout,
+                write=connect_timeout,
+                connect=connect_timeout,
+            )
             self.client = openai.OpenAI(
                 base_url=config.base_url, 
                 api_key=config.api_key,
@@ -1418,6 +1424,13 @@ Examples:
         default=200,
         help='Max tokens per response (default: 200)'
     )
+
+    parser.add_argument(
+        '--timeout',
+        type=float,
+        default=float(os.environ.get("RAIN_LM_TIMEOUT", "300")),
+        help='LLM read timeout in seconds (default: 300)'
+    )
     
     parser.add_argument(
         '--no-web',
@@ -1449,6 +1462,7 @@ def main():
         verbose=args.verbose,
         model_name=args.model,
         base_url=args.base_url,
+        timeout=max(30.0, args.timeout),
         recursive_depth=max(1, args.recursive_depth),
         recursive_intellect=not args.no_recursive_intellect
     )
