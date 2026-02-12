@@ -267,6 +267,10 @@ class ContextManager:
 
     def get_library_context(self, verbose: bool = False) -> Tuple[str, List[str]]:
         """Read COMPLETE papers from local library"""
+        # Ensure repeated calls don't keep stale/duplicated state.
+        self.loaded_papers = {}
+        self.paper_list = []
+
         if verbose:
             print(f"\n📂 Accessing Research Library at: {self.lab_path}")
         
