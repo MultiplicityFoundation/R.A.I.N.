@@ -80,6 +80,8 @@ class Config:
     # Context Settings - EXPANDED FOR DEEPER PAPER ANALYSIS
     context_snippet_length: int = 3000    # ~750 tokens per paper - more in-depth content
     total_context_length: int = 20000     # ~5k tokens for papers - allows full digestion
+    recursive_library_scan: bool = True      # Include nested folders (e.g., openclaw-main)
+    max_library_files: int = 400             # Hard cap to prevent runaway scans
     
     # Citation Tracking
     enable_citation_tracking: bool = True
@@ -234,6 +236,30 @@ class ContextManager:
         self.loaded_papers: Dict[str, str] = {}
         self.paper_list: List[str] = []
     
+    def _discover_files(self) -> List[Path]:
+        """Discover candidate research files, optionally including nested directories."""
+        skip_dirs = {".git", "__pycache__", ".venv", "venv", "node_modules", "meeting_archives"}
+
+        if self.config.recursive_library_scan:
+            candidates = [
+                f for f in self.lab_path.rglob("*")
+                if f.is_file() and f.suffix.lower() in {".md", ".txt"}
+                and not any(part in skip_dirs for part in f.parts)
+            ]
+        else:
+            candidates = [
+                f for f in self.lab_path.iterdir()
+                if f.is_file() and f.suffix.lower() in {".md", ".txt"}
+            ]
+
+        filtered = [
+            f for f in candidates
+            if "SOUL" not in f.name.upper()
+            and "LOG" not in f.name.upper()
+            and "MEETING" not in f.name.upper()
+        ]
+        return sorted(filtered)[: self.config.max_library_files]
+
     def get_library_context(self, verbose: bool = False) -> Tuple[str, List[str]]:
         """Read COMPLETE papers from local library"""
         if verbose:
@@ -245,14 +271,12 @@ class ContextManager:
         
         buffer = []
         
-        # Load ALL valid text files
-        all_files = sorted([
-            f for f in self.lab_path.iterdir() 
-            if f.suffix in ['.md', '.txt'] 
-            and "SOUL" not in f.name
-            and "LOG" not in f.name.upper()
-            and "MEETING" not in f.name.upper()
-        ])
+        # Load all valid text files (recursive by default)
+        all_files = self._discover_files()
+
+        if verbose:
+            scope = "recursive" if self.config.recursive_library_scan else "top-level"
+            print(f"   • Scan mode: {scope}; files discovered: {len(all_files)}")
         
         if not all_files:
             print("⚠️  No research papers found in library.")
@@ -269,24 +293,25 @@ class ContextManager:
                     content = f.read()
                     
                     # Store FULL content for citation verification
-                    self.loaded_papers[filepath.name] = content
-                    self.paper_list.append(filepath.name)
+                    paper_ref = str(filepath.relative_to(self.lab_path))
+                    self.loaded_papers[paper_ref] = content
+                    self.paper_list.append(paper_ref)
                     
                     # Include full paper up to snippet length (25k = essentially full)
                     remaining_budget = self.config.total_context_length - total_chars
                     
                     if remaining_budget > 1000:
                         to_include = min(len(content), self.config.context_snippet_length, remaining_budget)
-                        buffer.append(f"--- PAPER: {filepath.name} ---\n{content[:to_include]}\n")
+                        buffer.append(f"--- PAPER: {paper_ref} ---\n{content[:to_include]}\n")
                         total_chars += to_include
                         
                         # Show what percentage of paper was loaded
                         if verbose:
                             coverage = (to_include / len(content)) * 100 if len(content) > 0 else 100
-                            print(f"     ✓ Loaded: {filepath.name} ({to_include:,} chars, {coverage:.0f}% coverage)")
+                            print(f"     ✓ Loaded: {paper_ref} ({to_include:,} chars, {coverage:.0f}% coverage)")
                     else:
                         if verbose:
-                            print(f"     ⚠ Skipped {filepath.name} (budget exhausted)")
+                            print(f"     ⚠ Skipped {paper_ref} (budget exhausted)")
                     
             except Exception as e:
                 if verbose:
@@ -708,6 +733,18 @@ class RainLabOrchestrator:
                     time.sleep(2)
         
         return False
+
+    def _animate_spinner(self, label: str, duration: float = 0.9, color: str = "\033[96m"):
+        """Display a short ANSI spinner animation for terminal feedback."""
+        frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+        end_time = time.time() + max(duration, 0.1)
+        index = 0
+        while time.time() < end_time:
+            frame = frames[index % len(frames)]
+            print(f"\r{color}{frame} {label}\033[0m", end="", flush=True)
+            time.sleep(0.08)
+            index += 1
+        print(f"\r{color}✓ {label}\033[0m{' ' * 18}")
     
     def run_meeting(self, topic: str):
         """Run the research meeting"""
@@ -719,26 +756,19 @@ class RainLabOrchestrator:
             except: 
                 pass
         
-        # Header - ASCII Banner
+        # Header - 3D block ASCII Banner
         banner = r"""
-██████╗ ███████╗███████╗ ██████╗ ███╗   ██╗ █████╗ ███╗   ██╗████████╗
-██╔══██╗██╔════╝██╔════╝██╔═══██╗████╗  ██║██╔══██╗████╗  ██║╚══██╔══╝
-██████╔╝█████╗  ███████╗██║   ██║██╔██╗ ██║███████║██╔██╗ ██║   ██║   
-██╔══██╗██╔══╝  ╚════██║██║   ██║██║╚██╗██║██╔══██║██║╚██╗██║   ██║   
-██║  ██║███████╗███████║╚██████╔╝██║ ╚████║██║  ██║██║ ╚████║   ██║   
-╚═╝  ╚═╝╚══════╝╚══════╝ ╚═════╝ ╚═╝  ╚═══╝╚═╝  ╚═╝╚═╝  ╚═══╝   ╚═╝   
+██╗   ██╗███████╗██████╗ ███████╗██████╗ ██████╗ ██╗   ██╗███╗   ██╗ █████╗ ███╗   ███╗██╗ ██████╗███████╗
+██║   ██║██╔════╝██╔══██╗██╔════╝██╔══██╗╚════██╗╚██╗ ██╔╝████╗  ██║██╔══██╗████╗ ████║██║██╔════╝██╔════╝
+██║   ██║█████╗  ██████╔╝███████╗██████╔╝ █████╔╝ ╚████╔╝ ██╔██╗ ██║███████║██╔████╔██║██║██║     ███████╗
+╚██╗ ██╔╝██╔══╝  ██╔══██╗╚════██║██╔══██╗██╔═══╝   ╚██╔╝  ██║╚██╗██║██╔══██║██║╚██╔╝██║██║██║     ╚════██║
+ ╚████╔╝ ███████╗██║  ██║███████║██║  ██║███████╗   ██║   ██║ ╚████║██║  ██║██║ ╚═╝ ██║██║╚██████╗███████║
+  ╚═══╝  ╚══════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚══════╝   ╚═╝   ╚═╝  ╚═══╝╚═╝  ╚═╝╚═╝     ╚═╝╚═╝ ╚═════╝╚══════╝
 
-                    R E S O N A N T   I N T E L L I G E N C E
-                  ~~~≈≈≈~~~≈≈≈~~~≈≈≈~~~≈≈≈~~~≈≈≈~~~≈≈≈~~~
-
-        Vers3Dynamics | Meaning Machine | R.A.I.N. Lab
-
- Researcher and quantum-AI enthusiast based in Washington, DC.
- Creator of Vers3Dynamics.
-
- Still learning. Still listening. Still building.
+▒▓█  V E R S 3 D Y N A M I C S   R . A . I . N .   L A B  █▓▒
+░▒▓███  Resonant Adaptive Intelligence Network - live council  ███▓▒░
 """
-        print(banner)
+        print(f"\033[96m{banner}\033[0m")
         print(f"📋 Topic: {topic}")
         
         # Test connection
@@ -965,7 +995,7 @@ CRITICAL RULES:
 
 {agent.name}:"""
 
-        print(f"\n{agent.color}⚡ {agent.name} analyzing...\033[0m", end=' ', flush=True)
+        self._animate_spinner(f"{agent.name} analyzing", duration=1.0, color=agent.color)
         
         # RETRY LOGIC
         for attempt in range(self.config.max_retries):
