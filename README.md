@@ -1,4 +1,4 @@
-# James Library: RAG AI Agent Team
+# R.A.I.N. Lab: AI Agent Team
 
 James Library is a research-focused platform for **RAG (Retrieval-Augmented Generation) AI agents**.
 
