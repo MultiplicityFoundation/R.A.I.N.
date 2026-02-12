@@ -63,6 +63,17 @@ To run a quick test, the following will run an RLM query with the OpenAI client 
 make quickstart
 ```
 
+### Recursive RAG research lab (meeting style)
+If you want a team-meeting style recursive research workflow over local markdown papers plus web search (DuckDuckGo), use:
+```bash
+uv run python examples/research_lab_meeting.py \
+  --papers-dir ./papers \
+  --memory-dir ./memory \
+  --long-memory-file ./MEMORY.md \
+  --query "Combine these papers into novel recursive research ideas"
+```
+This example injects `list_papers`, `read_paper`, `search_library`, `semantic_search`, `web_search`/`web_fetch` (plus `search_web` alias), and file-backed memory helpers (`append_memory`, `read_recent_memory`, `update_long_memory`) into the REPL, enables persistence, and asks the model to synthesize role-based agent discussion with parallel sub-analyses via `llm_query_batched`.
+
 The default RLM client uses a REPL environment that runs on the host process through Python `exec` calls. It uses the same virtual environment as the host process (i.e. it will have access to the same dependencies), but with some limitations in its available global modules. As an example, we can call RLM completions using GPT-5-nano:
 ```python
 from rlm import RLM
