@@ -11,6 +11,47 @@ import argparse
 import os
 import subprocess
 import sys
+import time
+from pathlib import Path
+
+ANSI_RESET = "\033[0m"
+ANSI_CYAN = "\033[96m"
+ANSI_BLUE = "\033[94m"
+ANSI_MAGENTA = "\033[95m"
+ANSI_GREEN = "\033[92m"
+
+BANNER_LINES = [
+    "██╗   ██╗███████╗██████╗ ███████╗██████╗ ██████╗ ██╗   ██╗███╗   ██╗ █████╗ ███╗   ███╗██╗ ██████╗███████╗",
+    "██║   ██║██╔════╝██╔══██╗██╔════╝██╔══██╗██╔══██╗╚██╗ ██╔╝████╗  ██║██╔══██╗████╗ ████║██║██╔════╝██╔════╝",
+    "██║   ██║█████╗  ██████╔╝███████╗██████╔╝██║  ██║ ╚████╔╝ ██╔██╗ ██║███████║██╔████╔██║██║██║     ███████╗",
+    "╚██╗ ██╔╝██╔══╝  ██╔══██╗╚════██║██╔══██╗██║  ██║  ╚██╔╝  ██║╚██╗██║██╔══██║██║╚██╔╝██║██║██║     ╚════██║",
+    " ╚████╔╝ ███████╗██║  ██║███████║██║  ██║██████╔╝   ██║   ██║ ╚████║██║  ██║██║ ╚═╝ ██║██║╚██████╗███████║",
+    "  ╚═══╝  ╚══════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═════╝    ╚═╝   ╚═╝  ╚═══╝╚═╝  ╚═╝╚═╝     ╚═╝╚═╝ ╚═════╝╚══════╝",
+    "▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  R.A.I.N. Lab  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓",
+]
+
+
+def _print_banner() -> None:
+    colors = [ANSI_CYAN, ANSI_BLUE, ANSI_MAGENTA, ANSI_BLUE, ANSI_CYAN, ANSI_BLUE, ANSI_GREEN]
+    for line, color in zip(BANNER_LINES, colors):
+        print(f"{color}{line}{ANSI_RESET}", flush=True)
+
+
+def _spinner(message: str, duration_s: float = 0.9) -> None:
+    if not sys.stdout.isatty():
+        print(f"{ANSI_CYAN}{message}...{ANSI_RESET}", flush=True)
+        return
+
+    frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+    end_time = time.time() + max(0.1, duration_s)
+    i = 0
+    while time.time() < end_time:
+        frame = frames[i % len(frames)]
+        print(f"\r{ANSI_CYAN}{frame} {message}{ANSI_RESET}", end="", flush=True)
+        i += 1
+        time.sleep(0.08)
+    print(f"\r{ANSI_GREEN}✔ {message}{ANSI_RESET}")
+
 from pathlib import Path
 
 
@@ -83,6 +124,9 @@ def main(argv: list[str] | None = None) -> int:
         child_env = dict(os.environ)
         child_env["JAMES_LIBRARY_PATH"] = args.library
 
+    _print_banner()
+    _spinner("Booting VERS3DYNAMICS R.A.I.N. Lab launcher")
+    print(f"{ANSI_CYAN}Launching mode={args.mode}: {' '.join(cmd)}{ANSI_RESET}", flush=True)
     print(f"Launching mode={args.mode}: {' '.join(cmd)}")
     result = subprocess.run(cmd, env=child_env)
     return int(result.returncode)
