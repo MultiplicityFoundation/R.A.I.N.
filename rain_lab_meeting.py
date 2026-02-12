@@ -8,13 +8,23 @@ import os
 import glob
 
 # --- FORCE UTF-8 GLOBALLY (must be before other imports) ---
-sys.stdout.reconfigure(encoding='utf-8')
-sys.stderr.reconfigure(encoding='utf-8')
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding='utf-8')
+    except Exception:
+        # Some environments don't expose reconfigure(); keep running.
+        pass
 os.environ["PYTHONIOENCODING"] = "utf-8"
 os.environ["PYTHONUTF8"] = "1"
 
 # POINT TO THE USER'S LIBRARY LOCATION
-TARGET_PATH = r"C:\Users\chris\Downloads\files\james_library"
+TARGET_PATH = os.environ.get(
+    "JAMES_LIBRARY_PATH",
+    r"C:\Users\chris\Downloads\files\james_library",
+)
+if not os.path.exists(TARGET_PATH):
+    # Fallback to the current working directory when launched from the repo folder.
+    TARGET_PATH = os.getcwd()
 
 # Add path so we can import 'rlm'
 sys.path.insert(0, TARGET_PATH)
@@ -29,14 +39,16 @@ try:
 except Exception:
     pass
 
-try:
-    from rlm import RLM
-    import rlm as _rlm_mod
-    print(f"Using RLM from: {_rlm_mod.__file__}")
-except ImportError:
-    print(f"❌ CRITICAL ERROR: Could not import 'rlm' from {TARGET_PATH}")
-    print("Ensure the 'rlm' folder is inside 'james_library'.")
-    sys.exit(1)
+RLM = None
+if "--help" not in sys.argv and "-h" not in sys.argv:
+    try:
+        from rlm import RLM
+        import rlm as _rlm_mod
+        print(f"Using RLM from: {_rlm_mod.__file__}")
+    except ImportError:
+        print(f"❌ CRITICAL ERROR: Could not import 'rlm' from {TARGET_PATH}")
+        print("Ensure the 'rlm' folder is inside 'james_library'.")
+        sys.exit(1)
 
 import io
 import time
@@ -58,8 +70,11 @@ def _host_has_web_search() -> bool:
         return False
 
 # --- FORCE UTF-8 ---
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+for _name in ("stdout", "stderr"):
+    _obj = getattr(sys, _name, None)
+    _buffer = getattr(_obj, "buffer", None)
+    if _buffer is not None:
+        setattr(sys, _name, io.TextIOWrapper(_buffer, encoding='utf-8'))
 
 
 # =============================================================================
@@ -71,8 +86,8 @@ import os
 import glob
 import re
 
-# HARDCODED PATH TO USER LIBRARY (Use forward slashes to avoid escape issues)
-LIBRARY_PATH = r"C:/Users/chris/Downloads/files/james_library"
+# PATH TO USER LIBRARY (Use forward slashes to avoid escape issues)
+LIBRARY_PATH = os.environ.get("JAMES_LIBRARY_PATH", r"C:/Users/chris/Downloads/files/james_library")
 
 # GLOBAL TOPIC VARIABLE (Injected by the agent's first turn or host env)
 TOPIC = os.environ.get("RLM_TOPIC", "RESEARCH_TOPIC")
@@ -729,9 +744,9 @@ BEGIN EXECUTION IMMEDIATELY.
         self.rlm = RLM(
             backend="openai",
             backend_kwargs={
-                "model_name": "qwen2.5-coder-7b-instruct",
-                "base_url": "http://127.0.0.1:1234/v1",
-                "api_key": "lm-studio",
+                "model_name": os.environ.get("LM_STUDIO_MODEL", "qwen2.5-coder-7b-instruct"),
+                "base_url": os.environ.get("LM_STUDIO_BASE_URL", "http://127.0.0.1:1234/v1"),
+                "api_key": os.environ.get("LM_STUDIO_API_KEY", "lm-studio"),
                 "timeout": 180.0,
             },
             environment="local",
