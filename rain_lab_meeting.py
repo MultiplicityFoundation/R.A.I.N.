@@ -776,7 +776,7 @@ BEGIN EXECUTION IMMEDIATELY.
                 "setup_code": setup_code
             },
             custom_system_prompt=custom_prompt,
-            verbose=True
+            verbose=False
         )
         print("   ✓ RLM initialized with read_paper() and search_web()")
     
