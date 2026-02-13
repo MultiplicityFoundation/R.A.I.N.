@@ -1,25 +1,43 @@
-# R.A.I.N. Lab: AI Agent Team
+## 🚀 Open-source Launch: Welcome to R.A.I.N. Lab
 
-James Library is a research-focused platform for **RAG (Retrieval-Augmented Generation) AI agents**.
+R.A.I.N. Lab (Recursive Architecture of Intelligent Nexus) is open source.
 
-The system is designed around a **team meeting style workflow** where multiple agents converse with each other to analyze topics, compare sources, and build shared conclusions.
+This project started as a local skunkworks experiment: what happens when AI is built as a research partner instead of a single chatbot? The result is a multi-agent, local-first system where specialized AI scientists collaborate, debate, critique, and synthesize ideas over your own knowledge base.
 
-## What this project does
+R.A.I.N. Lab is designed for people who want high-agency workflows: researchers, founders, engineers, and independent labs who care about sovereignty, technical depth, and iterative discovery.
 
-- Gives AI agents access to a memory of research papers and indexed knowledge.
-- Uses retrieval to ground agent responses in available papers and references.
-- Allows agents to access the internet for up-to-date context when needed.
-- Supports multi-agent discussion where agents collaborate like a meeting team.
+### Why this exists
 
-## Core idea
+Most AI interfaces optimize for fast answers.  
+R.A.I.N. Lab optimizes for better thinking.
 
-Instead of a single assistant response, James Library enables coordinated agent conversations that combine:
+It combines:
+- local research memory (RAG over your papers and notes),
+- role-specialized agents with persistent identities,
+- recursive reasoning loops for deeper critique,
+- optional live web context when needed,
+- and practical modes for both conversational and tool-driven workflows.
 
-1. **Long-term paper memory** (research corpus knowledge),
-2. **Live internet access** (current information), and
-3. **Collaborative dialogue** (team-style reasoning).
+The goal is simple: wake up to sharper hypotheses, stronger reasoning, and actionable next steps.
 
-This makes it easier to produce research-oriented outputs that are both context-rich and grounded in sources.
+### What makes it different
+
+R.A.I.N. Lab is local-first and designed for sovereign operation.  
+You control the models, the corpus, and the workflow.
+
+This means you can tune for your domain, your standards, and your pace—without depending on a generic cloud personality or one-size-fits-all defaults.
+
+### Who this is for
+
+If you are building in deep tech, applied science, product R&D, or experimental AI systems, this repo is for you. It is especially useful when you need more than “helpful responses” and want structured, adversarial, source-grounded collaboration.
+
+### Quick start
+
+Run the unified launcher and choose a mode:
+
+```bash
+python rain_lab.py --mode chat --topic "your research topic"
+python rain_lab.py --mode rlm --topic "your research topic"
 
 ## Quick terminal setup (LM Studio)
 
@@ -31,29 +49,5 @@ If you are running LM Studio in terminal mode, these scripts now support environ
 - `RAIN_RECURSIVE_INTELLECT` (`1`/`0`, default enabled)
 - `RAIN_RECURSIVE_DEPTH` (default: `2`)
 
-Example:
-
-```bash
-export LM_STUDIO_MODEL=qwen2.5-coder-7b-instruct
-export LM_STUDIO_BASE_URL=http://127.0.0.1:1234/v1
-python rain_lab_meeting_chat_version.py --library . --topic "your research topic" --recursive-depth 2
-```
 
 Recursive intellect means each agent can do internal critique+revision passes before speaking, improving grounding, novelty, and clarity.
-
-### Unified launcher (recommended)
-
-Use one command and choose backend mode:
-
-```bash
-python rain_lab.py --mode chat --topic "your research topic"
-python rain_lab.py --mode rlm --topic "your research topic"
-```
-
-You can pass backend-specific flags after `--`:
-
-```bash
-python rain_lab.py --mode chat --topic "your topic" -- --recursive-depth 2 --no-web
-python rain_lab.py --mode rlm --topic "your topic" -- --no-web
-```
-
