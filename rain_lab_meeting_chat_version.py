@@ -239,6 +239,7 @@ class ContextManager:
         self.config = config
         self.lab_path = Path(config.library_path)
         self.loaded_papers: Dict[str, str] = {}
+        self.loaded_papers_lower: Dict[str, str] = {}
         self.paper_list: List[str] = []
     
     def _discover_files(self) -> List[Path]:
@@ -269,6 +270,7 @@ class ContextManager:
         """Read COMPLETE papers from local library"""
         # Ensure repeated calls don't keep stale/duplicated state.
         self.loaded_papers = {}
+        self.loaded_papers_lower = {}
         self.paper_list = []
 
         if verbose:
@@ -304,6 +306,7 @@ class ContextManager:
                     # Store FULL content for citation verification
                     paper_ref = str(filepath.relative_to(self.lab_path))
                     self.loaded_papers[paper_ref] = content
+                    self.loaded_papers_lower[paper_ref] = content.lower()
                     self.paper_list.append(paper_ref)
                     
                     # Include full paper up to snippet length (25k = essentially full)
@@ -343,8 +346,8 @@ class ContextManager:
         if len(quote_clean.split()) < 3:
             return None
         
-        for paper_name, content in self.loaded_papers.items():
-            content_clean = content.lower()
+        for paper_name in self.loaded_papers:
+            content_clean = self.loaded_papers_lower[paper_name]
             
             if fuzzy:
                 # Allow minor variations (punctuation, whitespace)
