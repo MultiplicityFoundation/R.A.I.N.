@@ -8,20 +8,33 @@ If you discover a security vulnerability in R.A.I.N. Lab, report it by opening a
 
 ### What to include
 
-- Description of the vulnerability and its potential impact.
-- Steps to reproduce or a minimal proof of concept.
-- Affected file(s) and line numbers, if known.
-- Suggested fix, if you have one.
+Include the following information in your report:
+
+1. **Description**: A clear description of the vulnerability
+2. **Impact**: The potential security impact (data exposure, privilege escalation, etc.)
+3. **Reproduction Steps**: Detailed steps to reproduce the issue
+4. **Affected Components**: Which parts of Phase Mirror are affected (mirror-dissonance, Terraform configs, API endpoints, etc.)
+5. **Suggested Fix**: If you have one (optional but appreciated)
+
+### Severity Classifications
+
+| Severity | Response Time | Examples |
+|----------|--------------|----------|
+| **Critical** | 24-48 hours | RCE, authentication bypass, data exfiltration |
+| **High** | 7 days | Privilege escalation, sensitive data exposure |
+| **Medium** | 30 days | Information disclosure, CSRF |
+| **Low** | 90 days | Minor information leaks, best practice violations |
 
 ### Labels
 
 When opening a security issue, add the label `security` if available. If not, prefix the issue title with `[SECURITY]`.
 
-### Response
+### What to Expect
 
-- We aim to acknowledge reports within 72 hours.
-- Confirmed vulnerabilities will be prioritized based on severity and patched on `main`.
-- Credit will be given to reporters in the commit message unless anonymity is requested.
+- **Acknowledgment**: Within 48 hours of your report
+- **Initial Assessment**: Within 7 business days
+- **Resolution Timeline**: Dependent on severity (see below)
+- **Credit**: Public acknowledgment in release notes (unless you prefer anonymity)
 
 ## Scope
 
