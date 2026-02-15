@@ -799,7 +799,16 @@ class RainLabOrchestrator:
         verbose = self.config.verbose
         if verbose:
             print("🔍 Scanning for Research Papers...")
+        else:
+            print("🔍 Scanning research library...", end="", flush=True)
+
         context_block, paper_list = self.context_manager.get_library_context(verbose=verbose)
+
+        if not verbose:
+            if paper_list:
+                print(f"\r\033[K\033[92m✓\033[0m Scanned {len(paper_list)} papers")
+            else:
+                print(f"\r\033[K\033[91m✗\033[0m No papers found.")
         
         if not paper_list:
             print("\n❌ No papers found. Cannot proceed.")
@@ -812,13 +821,26 @@ class RainLabOrchestrator:
         # Load agent souls from external files
         if verbose:
             print("\n🧠 Loading Agent Souls...")
+        else:
+            print("🧠 Loading agents...", end="", flush=True)
+
         for agent in self.team:
             agent.load_soul(self.config.library_path, verbose=verbose)
+
+        if not verbose:
+            print(f"\r\033[K\033[92m✓\033[0m Agents ready")
         
         # Perform web search for supplementary context
         web_context = ""
         if self.web_search_manager.enabled:
-            web_context, _ = self.web_search_manager.search(topic, verbose=verbose)
+            if not verbose:
+                print("🌐 Searching web...", end="", flush=True)
+
+            web_context, results = self.web_search_manager.search(topic, verbose=verbose)
+
+            if not verbose:
+                count = len(results) if results else 0
+                print(f"\r\033[K\033[92m✓\033[0m Web search ({count} results)")
         elif self.config.enable_web_search and not DDG_AVAILABLE and verbose:
             print("\n⚠️  Web search disabled: duckduckgo-search not installed")
             print("   Install with: pip install duckduckgo-search\n")
