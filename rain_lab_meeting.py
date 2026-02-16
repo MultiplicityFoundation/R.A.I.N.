@@ -8,11 +8,18 @@ import os
 import glob
 import io
 import time
+import uuid
 import concurrent.futures
 from pathlib import Path
 from typing import List
 from dataclasses import dataclass, field
 from datetime import datetime
+
+# --- EVAL METRICS ---
+try:
+    from rain_metrics import MetricsTracker
+except ImportError:
+    MetricsTracker = None  # metrics collection is optional
 
 # --- FORCE UTF-8 GLOBALLY (must be before other imports) ---
 for _stream in (sys.stdout, sys.stderr):
@@ -43,7 +50,7 @@ try:
     for _m in list(_sys_mod.modules):
         if _m == 'rlm' or _m.startswith('rlm.'):
             _sys_mod.modules.pop(_m, None)
-except Exception:
+except Exception:  # noqa: E722 — best-effort cache clear; safe to ignore
     pass
 
 RLM = None
@@ -941,11 +948,30 @@ Shared sources (use these for quotes during discussion turns):
             agent.load_soul(TARGET_PATH)
         
         self.log.initialize(topic)
+
+        # Initialize eval metrics tracker
+        self.metrics_tracker = None
+        if MetricsTracker is not None:
+            self.metrics_tracker = MetricsTracker(
+                session_id=str(uuid.uuid4())[:8],
+                topic=topic,
+                model=os.environ.get("LM_STUDIO_MODEL", "qwen2.5-coder-7b-instruct"),
+            )
         # Host-side paper selection (exact filename match first)
         selected_files = _host_select_files(topic, max_files=2)
         selected_names = [f.name for f in selected_files]
         match_names = list(selected_names)
         local_ctx = _host_snippets(selected_files, per_file_chars=1200)
+
+        # Build corpus for eval metrics from selected files
+        if self.metrics_tracker is not None and selected_files:
+            corpus: dict[str, str] = {}
+            for fp in selected_files:
+                try:
+                    corpus[fp.name] = fp.read_text(encoding="utf-8", errors="ignore")
+                except Exception:
+                    pass
+            self.metrics_tracker.set_corpus(corpus)
         
         history: List[str] = []
         
@@ -963,7 +989,7 @@ Shared sources (use these for quotes during discussion turns):
         try:
             import signal
             signal.signal(signal.SIGINT, _handle_sigint)
-        except Exception:
+        except Exception:  # SIGINT handler unavailable on some platforms
             pass
         
         turn = 0
@@ -992,13 +1018,13 @@ Shared sources (use these for quotes during discussion turns):
                     future = executor.submit(_call_model, prompt)
                     try:
                         result = future.result(timeout=60)
-                    except concurrent.futures.TimeoutError:
+                    except concurrent.futures.TimeoutError:  # Retry timed out; keep prior response
                         # Retry once with a shorter prompt
                         short_prompt = prompt[-3000:]
                         future = executor.submit(_call_model, short_prompt)
                         try:
                             result = future.result(timeout=60)
-                        except concurrent.futures.TimeoutError:
+                        except concurrent.futures.TimeoutError:  # Retry timed out; keep prior response
                             result = None
 
                 if result is None:
@@ -1047,7 +1073,7 @@ Shared sources (use these for quotes during discussion turns):
                                 retry_result = future.result(timeout=45)
                                 retry_response = retry_result.response if hasattr(retry_result, 'response') else str(retry_result)
                                 response = retry_response.strip()
-                            except concurrent.futures.TimeoutError:
+                            except concurrent.futures.TimeoutError:  # Retry timed out; keep prior response
                                 pass
 
 
@@ -1135,7 +1161,7 @@ Shared sources (use these for quotes during discussion turns):
                                 retry_result = future.result(timeout=45)
                                 retry_response = retry_result.response if hasattr(retry_result, 'response') else str(retry_result)
                                 response = retry_response.strip()
-                            except concurrent.futures.TimeoutError:
+                            except concurrent.futures.TimeoutError:  # Retry timed out; keep prior response
                                 pass
 
                     # Hard override: strip refusals/apologies/repl talk entirely
@@ -1173,7 +1199,7 @@ Shared sources (use these for quotes during discussion turns):
                                 retry_result = future.result(timeout=45)
                                 retry_response = retry_result.response if hasattr(retry_result, 'response') else str(retry_result)
                                 response = retry_response.strip()
-                            except concurrent.futures.TimeoutError:
+                            except concurrent.futures.TimeoutError:  # Retry timed out; keep prior response
                                 pass
 
                     # After the opener turn, avoid any new tool calls
@@ -1186,7 +1212,7 @@ Shared sources (use these for quotes during discussion turns):
                                     retry_result = future.result(timeout=45)
                                     retry_response = retry_result.response if hasattr(retry_result, 'response') else str(retry_result)
                                     response = retry_response.strip()
-                                except concurrent.futures.TimeoutError:
+                                except concurrent.futures.TimeoutError:  # Retry timed out; keep prior response
                                     pass
 
                 # Enforce James' meeting opener on first turn
@@ -1211,7 +1237,7 @@ Shared sources (use these for quotes during discussion turns):
                                 retry_result = future.result(timeout=45)
                                 retry_response = retry_result.response if hasattr(retry_result, 'response') else str(retry_result)
                                 response = retry_response.strip()
-                            except concurrent.futures.TimeoutError:
+                            except concurrent.futures.TimeoutError:  # Retry timed out; keep prior response
                                 pass
 
                 # Enforce discussion tone after opener turn
@@ -1230,13 +1256,17 @@ Shared sources (use these for quotes during discussion turns):
                                 retry_result = future.result(timeout=45)
                                 retry_response = retry_result.response if hasattr(retry_result, 'response') else str(retry_result)
                                 response = retry_response.strip()
-                            except concurrent.futures.TimeoutError:
+                            except concurrent.futures.TimeoutError:  # Retry timed out; keep prior response
                                 pass
 
                 print(f"\n{agent.color}{agent.name}: {response}\033[0m")
                     
                 self.log.log(agent.name, response)
                 history.append(f"{agent.name}: {response}")
+
+                # Record eval metrics for this turn
+                if self.metrics_tracker is not None:
+                    self.metrics_tracker.record_turn(agent.name, response)
                     
             except Exception as e:
                 print(f"⚠️ Error: {e}")
@@ -1247,7 +1277,14 @@ Shared sources (use these for quotes during discussion turns):
             turn += 1
             time.sleep(0.5)
         
-        
+        # Finalize eval metrics
+        if self.metrics_tracker is not None:
+            record = self.metrics_tracker.finalize()
+            print("\nEVAL METRICS:")
+            print(f"  • Citation accuracy:    {record['citation_accuracy']:.2f}")
+            print(f"  • Novel-claim density:  {record['novel_claim_density']:.2f}")
+            print(f"  • Critique change rate: {record['critique_change_rate']:.2f}")
+
         self.log.finalize()
         print("\n📝 Meeting log saved.")
 
