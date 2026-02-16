@@ -19,6 +19,7 @@ import re
 RE_QUOTE_DOUBLE = re.compile(r'"([^"]+)"')
 RE_QUOTE_SINGLE = re.compile(r"'([^']+)'")
 RE_CORRUPTION_CAPS = re.compile(r'[A-Z]{8,}')
+RE_WEB_SEARCH_COMMAND = re.compile(r"\[SEARCH:\s*(.*?)\]", re.IGNORECASE)
 RE_CORRUPTION_PATTERNS = [
     re.compile(p, re.IGNORECASE) for p in [
         r'\|eoc_fim\|',           # End of context markers
@@ -987,6 +988,25 @@ class RainLabOrchestrator:
             print(f"\n{current_agent.color}{'─'*70}")
             print(f"{current_agent.name}: {clean_response}")
             print(f"{'─'*70}\033[0m")
+
+            search_match = RE_WEB_SEARCH_COMMAND.search(clean_response)
+            if search_match:
+                query = search_match.group(1).strip()
+                if query:
+                    print(f"\033[94m🌐 Active Web Search requested: {query}\033[0m")
+                    web_note, web_results = self.web_search_manager.search(query, verbose=verbose)
+
+                    if web_note:
+                        print("\033[94m📎 Web Search Result:\033[0m")
+                        print(web_note)
+                        history_log.append(f"SYSTEM: Web search for '{query}'\n{web_note}")
+                    else:
+                        no_result_note = f"No web results returned for query: {query}"
+                        print(f"\033[94m📎 Web Search Result: {no_result_note}\033[0m")
+                        history_log.append(f"SYSTEM: {no_result_note}")
+
+                    if web_results:
+                        self.full_context += f"\n\n### LIVE WEB SEARCH\nQuery: {query}\n{web_note}"
             
             # Show citation feedback
             if metadata and metadata.get('verified'):
@@ -1070,6 +1090,7 @@ CRITICAL RULES:
 - Use "exact quotes" from the papers when citing data
 - Mention which paper you're quoting: [from filename.md]
 - If you must speculate, prefix with [SPECULATION]
+- CRITICAL: If you need to verify a fact online, type: [SEARCH: your query]
 - Keep response under 150 words
 
 {agent.name}:"""
@@ -1112,6 +1133,7 @@ RECENT DISCUSSION:
 3. ADVANCE the discussion - raise a NEW point, question, or angle not yet discussed
 4. Focus on YOUR specialty: {agent.focus}
 5. Keep response under 80 words - be concise
+6. CRITICAL: If you need to verify a fact online, type: [SEARCH: your query]
 
 Your task: {mission}
 
