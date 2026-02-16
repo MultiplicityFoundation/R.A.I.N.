@@ -16,6 +16,7 @@ import time
 import uuid
 from pathlib import Path
 import re
+import select
 
 # --- PRE-COMPILED REGEX PATTERNS ---
 RE_QUOTE_DOUBLE = re.compile(r'"([^"]+)"')
@@ -1078,14 +1079,24 @@ class RainLabOrchestrator:
             print(f"\n{current_agent.color}▶ {current_agent.name}'s turn ({current_agent.role})\033[0m")
             print("\033[90m   [Press ENTER to speak, or wait...]\033[0m", end='', flush=True)
             
-            # Windows-compatible: check for keypress during brief window
+            # Cross-platform: check for keypress during brief window
             intervention_window = 1.5  # seconds to wait for user input
             start_time = time.time()
             while time.time() - start_time < intervention_window:
-                if msvcrt and msvcrt.kbhit():  # Check if a key was pressed
+                if msvcrt and msvcrt.kbhit():  # Windows
                     key = msvcrt.getch()
                     user_wants_to_speak = True
                     break
+                elif sys.platform != 'win32':  # Unix/Linux/Mac
+                    try:
+                        r, _, _ = select.select([sys.stdin], [], [], 0)
+                        if r:
+                            sys.stdin.readline()
+                            user_wants_to_speak = True
+                            break
+                    except Exception:
+                        pass
+
                 time.sleep(0.05)  # Small sleep to prevent CPU spinning
             
             print("\r" + " " * 50 + "\r", end='')  # Clear the "Press ENTER" prompt
