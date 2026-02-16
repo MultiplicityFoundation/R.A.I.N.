@@ -1,7 +1,6 @@
 # Contributing to R.A.I.N. Lab
 
-Thank you for your interest in contributing to the **Resonant Adaptive
-Intelligence Network** project. This document describes the rules every
+Thank you for your interest in contributing to the **Recursive Architecture of Intelligent Nexus** project. This document describes the rules every
 contributor—human or bot—must follow before code lands on `main`.
 
 ---
