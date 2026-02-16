@@ -839,3 +839,4 @@ def combine_contexts(entities, relationships, sources):
     )
 
     return combined_entities, combined_relationships, ""
+
