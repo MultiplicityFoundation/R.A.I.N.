@@ -1373,6 +1373,35 @@ Use these links to propose creative cross-paper insights if relevant.
                 
                 content = response.choices[0].message.content.strip()
 
+                # Guardrail: some local models collapse back to James' opener template
+                # on later turns, which appears in LM Studio logs as repeated intros.
+                if turn_count >= 1 and agent.name == "James":
+                    lowered = content.lower()
+                    repeated_intro = (
+                        lowered.startswith("hey team")
+                        or "today we're looking into" in lowered
+                        or "today we're talking about" in lowered
+                    )
+                    if repeated_intro:
+                        correction = self.client.chat.completions.create(
+                            model=self.config.model_name,
+                            messages=[
+                                {"role": "system", "content": f"{agent.soul}\n\n### RESEARCH DATABASE\n{context_block}"},
+                                {"role": "user", "content": (
+                                    "You are in mid-meeting, not opening the session. "
+                                    "Do NOT use intro phrases like 'Hey team' or restate the topic. "
+                                    "React to the previous speaker by name in the first sentence, "
+                                    "add one new concrete paper-grounded point, and end with a question. "
+                                    "Keep under 80 words."
+                                )}
+                            ],
+                            temperature=self.config.temperature,
+                            max_tokens=self.config.max_tokens
+                        )
+                        corrected = correction.choices[0].message.content.strip()
+                        if corrected:
+                            content = corrected
+
                 # Optional recursive refinement: critique + revise in short internal loops
                 if self.config.recursive_intellect and self.config.recursive_depth > 0 and content:
                     for _ in range(self.config.recursive_depth):
