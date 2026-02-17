@@ -153,6 +153,38 @@ def build_command(args: argparse.Namespace, passthrough: list[str], repo_root: P
     return cmd
 
 
+async def run_rain_lab(
+    query: str,
+    mode: str = "chat",
+    agent: str | None = None,
+    recursive_depth: int = 1,
+) -> str:
+    """Async integration entrypoint used by non-CLI gateways (e.g., Telegram).
+
+    This launcher keeps backward compatibility with the existing CLI while
+    providing an importable symbol for adapters.
+
+    By default it tries to import a richer runtime implementation from
+    ``rain_lab_runtime.py``. If that module is absent, an explicit error is
+    raised so integrators know where to wire their project-specific logic.
+    """
+    try:
+        from rain_lab_runtime import run_rain_lab as runtime_run_rain_lab
+    except ImportError as exc:
+        raise RuntimeError(
+            "run_rain_lab is not wired yet. Add rain_lab_runtime.py with an "
+            "async run_rain_lab(...) implementation, or replace rain_lab.run_rain_lab "
+            "with your project's existing async entrypoint."
+        ) from exc
+
+    return await runtime_run_rain_lab(
+        query=query,
+        mode=mode,
+        agent=agent,
+        recursive_depth=recursive_depth,
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(argv) if argv is not None else sys.argv[1:]
     args, passthrough = parse_args(argv)
