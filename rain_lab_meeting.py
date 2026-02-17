@@ -1041,6 +1041,36 @@ Shared sources (use these for quotes during discussion turns):
                 else:
                     response = result.response if hasattr(result, 'response') else str(result)
                 raw_response = response
+
+                # Some LM Studio / backend combinations can ignore turn context and
+                # keep re-emitting James' opener on later turns. Detect and retry with
+                # an explicit anti-opener correction before any downstream cleanup.
+                if turn >= 1:
+                    lowered = response.lower()
+                    repeated_opener = (
+                        lowered.startswith("hey team")
+                        or "today we're looking into" in lowered
+                        or "today we're talking about" in lowered
+                    )
+                    if repeated_opener:
+                        retry_prompt = (
+                            prompt
+                            + "\n\nSTRICT RETRY:\n"
+                            + "- You are in an ongoing discussion (NOT the opener).\n"
+                            + "- Do NOT start with 'Hey team' or re-introduce the topic.\n"
+                            + "- First sentence must react to the previous speaker by name.\n"
+                            + "- Add one new concrete point and end with a direct teammate question.\n"
+                        )
+                        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                            future = executor.submit(_call_model, retry_prompt)
+                            try:
+                                retry_result = future.result(timeout=45)
+                                retry_response = retry_result.response if hasattr(retry_result, 'response') else str(retry_result)
+                                if retry_response and retry_response.strip():
+                                    response = retry_response.strip()
+                                    raw_response = response
+                            except concurrent.futures.TimeoutError:
+                                pass
     
                 # Clean up any thinking tags or artifacts
 
