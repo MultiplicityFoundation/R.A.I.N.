@@ -35,6 +35,25 @@ RE_CORRUPTION_PATTERNS = [
     ]
 ]
 
+
+def sanitize_text(text: str) -> str:
+    """Sanitize external content to prevent prompt injection and control token attacks"""
+    if not text:
+        return ""
+
+    # 1. Remove LLM control tokens and known corruption markers
+    for token in ["<|endoftext|>", "<|im_start|>", "<|im_end|>", "|eoc_fim|"]:
+        text = text.replace(token, "[TOKEN_REMOVED]")
+
+    # 2. Neutralize '###' headers that could simulate system/user turns
+    text = text.replace("###", ">>>")
+
+    # 3. Prevent recursive search triggers
+    text = text.replace("[SEARCH:", "[SEARCH;")
+
+    return text.strip()
+
+
 DEFAULT_LIBRARY_PATH = str(Path(__file__).resolve().parent)
 DEFAULT_MODEL_NAME = os.environ.get("LM_STUDIO_MODEL", "qwen2.5-coder-7b-instruct")
 from typing import List, Dict, Optional, Tuple
@@ -478,8 +497,10 @@ class ContextManager:
                     remaining_budget = self.config.total_context_length - total_chars
                     
                     if remaining_budget > 1000:
-                        to_include = min(len(content), self.config.context_snippet_length, remaining_budget)
-                        buffer.append(f"--- PAPER: {paper_ref} ---\n{content[:to_include]}\n")
+                        # SANITIZE CONTENT before adding to prompt
+                        safe_content = sanitize_text(content)
+                        to_include = min(len(safe_content), self.config.context_snippet_length, remaining_budget)
+                        buffer.append(f"--- PAPER: {paper_ref} ---\n{safe_content[:to_include]}\n")
                         total_chars += to_include
                         
                         # Show what percentage of paper was loaded
@@ -630,20 +651,7 @@ class WebSearchManager:
     
     def _sanitize_text(self, text: str) -> str:
         """Sanitize web content to prevent prompt injection and control token attacks"""
-        if not text:
-            return ""
-
-        # 1. Remove LLM control tokens and known corruption markers
-        for token in ["<|endoftext|>", "<|im_start|>", "<|im_end|>", "|eoc_fim|"]:
-            text = text.replace(token, "[TOKEN_REMOVED]")
-
-        # 2. Neutralize '###' headers that could simulate system/user turns
-        text = text.replace("###", ">>>")
-
-        # 3. Prevent recursive search triggers
-        text = text.replace("[SEARCH:", "[SEARCH;")
-
-        return text.strip()
+        return sanitize_text(text)
 
     def _format_results(self, results: List[Dict]) -> str:
         """Format results for agent context"""
@@ -892,6 +900,7 @@ class Diplomat:
         try:
             with open(message_file, "r", encoding="utf-8") as f:
                 content = f.read().strip()
+            content = sanitize_text(content)
         except Exception as e:
             print(f"⚠️  Failed to read diplomat message '{message_file}': {e}")
             return None
