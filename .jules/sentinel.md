@@ -2,3 +2,8 @@
 **Vulnerability:** Unvalidated web search results entered the agent context, allowing external content to potentially hijack the agent using prompt injection techniques (e.g., fake system prompts, recursive search commands).
 **Learning:** LLM agents that consume external data must treat that data as untrusted. Simply formatting it into the prompt is dangerous if the data contains control tokens or prompt-like structures.
 **Prevention:** Implement strict sanitization for all external data sources. Strip known control tokens, escape prompt delimiters (like `###`), and neutralize command triggers (like `[SEARCH:`).
+
+## 2024-05-23 - [Direct Prompt Injection via Local Files]
+**Vulnerability:** Untrusted content from local files (inbox messages, research papers) was injected directly into the LLM context without sanitization. Attackers could use control tokens (e.g., `<|im_end|>`) or fake headers (e.g., `###`) to hijack the agent's behavior.
+**Learning:** File system inputs are not inherently safe. Any external data entering the prompt must be treated as untrusted, regardless of its source (web or local).
+**Prevention:** Apply a unified sanitization function to ALL external inputs (web search, file reads, user messages) before adding them to the prompt context.
