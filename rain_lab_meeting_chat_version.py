@@ -532,23 +532,29 @@ class ContextManager:
         if len(quote_clean.split()) < 3:
             return None
         
+        # Pre-calculate fuzzy matching windows outside the loop to optimize performance
+        windows_to_check = []
+        if fuzzy:
+            quote_words = quote_clean.split()
+            if len(quote_words) > 3:
+                # Check multiple word windows for better matching
+                # Try first 5 words, then first 8, then middle section
+                raw_windows = [
+                    " ".join(quote_words[:5]),
+                    " ".join(quote_words[:8]) if len(quote_words) >= 8 else None,
+                    " ".join(quote_words[2:7]) if len(quote_words) >= 7 else None,
+                ]
+                # Filter out None values once
+                windows_to_check = [w for w in raw_windows if w]
+
         for paper_name in self.loaded_papers:
             content_clean = self.loaded_papers_lower[paper_name]
             
             if fuzzy:
-                # Allow minor variations (punctuation, whitespace)
-                quote_words = quote_clean.split()
-                if len(quote_words) > 3:
-                    # Check multiple word windows for better matching
-                    # Try first 5 words, then first 8, then middle section
-                    windows_to_check = [
-                        " ".join(quote_words[:5]),
-                        " ".join(quote_words[:8]) if len(quote_words) >= 8 else None,
-                        " ".join(quote_words[2:7]) if len(quote_words) >= 7 else None,
-                    ]
-                    for window in windows_to_check:
-                        if window and window in content_clean:
-                            return paper_name
+                # Use pre-calculated windows
+                for window in windows_to_check:
+                    if window in content_clean:
+                        return paper_name
             else:
                 # Exact match required
                 if quote_clean in content_clean:
