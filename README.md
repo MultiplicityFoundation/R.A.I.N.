@@ -60,3 +60,20 @@ Recursive intellect means each agent can do internal critique+revision passes be
 `hello_os.py` is now treated as a first-class research source for both launcher modes:
 - **RLM mode** exposes `read_hello_os()` so agents can intentionally load and reason over the symbolic/geometric engine.
 - **Chat mode** includes `hello_os.py` in context discovery so agents can cite and use its operator design directly.
+
+
+### Persistent background service (OpenClaw)
+
+To deploy `james_library` as a reboot-persistent background service, run:
+
+```bash
+python deploy.py --service-name james-library --target rain_lab.py --target-args -- --mode chat --topic "autonomous research"
+```
+
+`deploy.py` auto-detects the operating system and installs:
+- Windows: NSSM service command using a headless Python executable (`pythonw.exe` when available)
+- macOS: `~/Library/LaunchAgents/*.plist` with `KeepAlive=true`
+- Linux: `/etc/systemd/system/*.service` with `Restart=always`
+
+The supervisor process is `openclaw_service.py`, which runs a heartbeat every 60 seconds.
+It checks `tasks.json` for `restart` directives and scans `logs/*.log` for crash patterns to self-heal by restarting the target process.
