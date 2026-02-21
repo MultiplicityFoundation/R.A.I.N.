@@ -1,5 +1,8 @@
 ## 🚀 open-source (beta) R.A.I.N. Lab
 
+<video src="assets/logo.mp4" controls width="720">
+</video>
+
 ![James Library](assets/james-library.svg)
 
 R.A.I.N. Lab (Recursive Architecture of Intelligent Nexus) is open source.
