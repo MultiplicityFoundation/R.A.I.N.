@@ -60,6 +60,10 @@ class RLM:
             "model": self.model_name,
             "messages": messages,
             "temperature": 0.2,
+            # Explicitly request a non-stream response. Some local OpenAI-compatible
+            # servers default to streaming, which can leave terminal callers waiting
+            # for a final JSON payload that never arrives.
+            "stream": False,
         }
         data = json.dumps(payload).encode("utf-8")
 
@@ -82,15 +86,61 @@ class RLM:
         except Exception as exc:  # noqa: BLE001
             raise RuntimeError(f"Failed to reach LM Studio endpoint at {self.base_url}: {exc}") from exc
 
-        raw = json.loads(body)
-        content = (
-            raw.get("choices", [{}])[0]
-            .get("message", {})
-            .get("content", "")
-        )
+        raw, content = _decode_completion_body(body)
         if self.verbose:
             print(content)
         return CompletionResult(response=content, raw=raw)
+
+
+def _decode_completion_body(body: str) -> tuple[dict[str, Any], str]:
+    """Decode either JSON chat completion payloads or SSE stream dumps."""
+    try:
+        raw = json.loads(body)
+        return raw, _extract_content_from_completion_json(raw)
+    except json.JSONDecodeError:
+        # Some local servers can still return SSE frames in edge cases.
+        # Parse those frames defensively so callers receive the final text.
+        text = _extract_content_from_sse(body)
+        return {"_raw_sse": body}, text
+
+
+def _extract_content_from_completion_json(raw: dict[str, Any]) -> str:
+    choice = raw.get("choices", [{}])[0]
+    message = choice.get("message", {}) if isinstance(choice, dict) else {}
+    content = message.get("content", "") if isinstance(message, dict) else ""
+    if isinstance(content, str):
+        return content
+    return ""
+
+
+def _extract_content_from_sse(body: str) -> str:
+    chunks: list[str] = []
+    for line in body.splitlines():
+        line = line.strip()
+        if not line.startswith("data:"):
+            continue
+        data = line[5:].strip()
+        if not data or data == "[DONE]":
+            continue
+        try:
+            evt = json.loads(data)
+        except json.JSONDecodeError:
+            continue
+        choices = evt.get("choices", []) if isinstance(evt, dict) else []
+        if not choices:
+            continue
+        first = choices[0] if isinstance(choices[0], dict) else {}
+        delta = first.get("delta", {}) if isinstance(first, dict) else {}
+        if isinstance(delta, dict) and isinstance(delta.get("content"), str):
+            chunks.append(delta["content"])
+            continue
+        message = first.get("message", {}) if isinstance(first, dict) else {}
+        if isinstance(message, dict) and isinstance(message.get("content"), str):
+            chunks.append(message["content"])
+            continue
+        if isinstance(first.get("text"), str):
+            chunks.append(first["text"])
+    return "".join(chunks)
 
 
 __all__ = ["RLM", "CompletionResult"]
