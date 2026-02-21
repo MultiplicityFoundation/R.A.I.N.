@@ -239,6 +239,15 @@ final class ControlChannel {
             }
         }
 
+        // GatewayChannel wraps URL errors as NSError to preserve context. Keep cancellation friendly
+        // instead of surfacing the raw system message (e.g. "The operation was canceled.").
+        if nsError.domain == NSURLErrorDomain,
+           nsError.code == URLError.cancelled.rawValue
+        {
+            let port = GatewayEnvironment.gatewayPort()
+            return "Gateway connection was closed; start the gateway (localhost:\(port)) and retry."
+        }
+
         if nsError.domain == "Gateway", nsError.code == 5 {
             let port = GatewayEnvironment.gatewayPort()
             return "Gateway request timed out; check the gateway process on localhost:\(port)."
