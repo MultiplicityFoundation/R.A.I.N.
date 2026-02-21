@@ -610,6 +610,7 @@ RULES:
 - You are ONLY {self.name}. Never speak as another team member.
 - Be concise: 80-120 words max per response.
 - When you need data, write code to get it.
+- Use ONLY research papers from this library (e.g., Coherence Depth, Discrete Celestial Holography, Location is a Dynamic Variable) and web search.
 - Only use: read_paper(), read_hello_os(), search_web(), list_papers(), search_library(), semantic_search()
 """
             self._soul_cache = external_soul + rlm_rules
@@ -635,6 +636,7 @@ def create_team() -> List[Agent]:
 AVAILABLE: read_paper(), read_hello_os(), run_hello_os_executable(), search_web(), list_papers()
 BANNED: llm_query(), FINAL_VAR(), FINAL(), SHOW_VARS(), context
 RESPOND: 50-100 words, conversational, as a scientist.
+SOURCE RULE: Use only local research papers + web search; do not rely on other sources.
 """
         ),
         Agent(
