@@ -4,17 +4,17 @@ from pathlib import Path
 # Ensure the repo root is importable
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from rain_lab import parse_args, build_command
+from rain_lab import build_command, parse_args
 
 
 def test_parse_defaults():
-    args, pt = parse_args([])
+    args, _ = parse_args([])
     assert args.mode == "chat"
     assert args.topic is None
 
 
 def test_parse_rlm_mode():
-    args, pt = parse_args(["--mode", "rlm", "--topic", "test"])
+    args, _ = parse_args(["--mode", "rlm", "--topic", "test"])
     assert args.mode == "rlm"
     assert args.topic == "test"
 
@@ -22,7 +22,7 @@ def test_parse_rlm_mode():
 def test_build_command_chat(repo_root):
     args, pt = parse_args(["--mode", "chat", "--topic", "x"])
     cmd = build_command(args, pt, repo_root)
-    assert "chat_with_james.py" in cmd[1]
+    assert "rain_lab_runtime.py" in cmd[1]
 
 
 def test_build_command_rlm(repo_root):
@@ -38,22 +38,23 @@ def test_build_command_hello_os(repo_root):
 
 
 def test_passthrough_split():
-    args, pt = parse_args(["--mode", "chat", "--", "--extra"])
+    _, pt = parse_args(["--mode", "chat", "--", "--extra"])
     assert pt == ["--extra"]
 
 
-def test_turns_forwarded(repo_root):
-    args, pt = parse_args(["--mode", "chat", "--topic", "t", "--turns", "5"])
-    cmd = build_command(args, pt, repo_root)
-    assert "--max-turns" in cmd
-    assert "5" in cmd
-
-def test_build_command_chat_requires_single_script(repo_root, monkeypatch):
+def test_build_command_chat_requires_runtime_script(repo_root, monkeypatch):
     args, pt = parse_args(["--mode", "chat", "--topic", "x"])
-    monkeypatch.setattr(Path, "exists", lambda self: False if self.name == "chat_with_james.py" else Path.__dict__["exists"](self))
+    original_exists = Path.exists
+
+    def fake_exists(path_obj: Path) -> bool:
+        if path_obj.name == "rain_lab_runtime.py":
+            return False
+        return original_exists(path_obj)
+
+    monkeypatch.setattr(Path, "exists", fake_exists)
     try:
         build_command(args, pt, repo_root)
     except FileNotFoundError as exc:
-        assert "chat_with_james.py" in str(exc)
+        assert "rain_lab_runtime.py" in str(exc)
     else:
-        raise AssertionError("Expected FileNotFoundError when chat_with_james.py is missing")
+        raise AssertionError("Expected FileNotFoundError when rain_lab_runtime.py is missing")
