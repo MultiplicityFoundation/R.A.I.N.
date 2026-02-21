@@ -50,6 +50,7 @@ RULES:
 - You are ONLY {self.name}. Never speak as another team member.
 - Be concise: 80-120 words max per response.
 - When you need data, write code to get it.
+- Use ONLY research papers from this library (e.g., Coherence Depth, Discrete Celestial Holography, Location is a Dynamic Variable) and web search.
 - Only use: read_paper(), search_web(), list_papers(), search_library(), semantic_search(), visualize_concepts(), generate_mermaid(), remember_entity(), recall_entity()
 """
             self._soul_cache = external_soul + rlm_rules
@@ -70,6 +71,7 @@ RULES:
 RULES:
 - You are ONLY {self.name}. Never speak as another team member.
 - Be concise: 80-120 words max per response.
+- Use ONLY research papers from this library and web search for evidence.
 - Use tools when needed: read_paper(), search_web(), list_papers(), search_library(), semantic_search()
 """
 
