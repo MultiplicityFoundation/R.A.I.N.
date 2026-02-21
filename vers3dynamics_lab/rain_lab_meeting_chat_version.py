@@ -1500,9 +1500,10 @@ Respond as {agent.name} only:"""
                 print(f"\033[90m   ✓ Response received ({len(content)} chars)\033[0m")
 
                 # Optional recursive refinement: critique + revise in ONE call
-                if self.config.recursive_intellect and self.config.recursive_depth > 0 and content:
-                    for ri in range(self.config.recursive_depth):
-                        print(f"\033[90m   🔄 Refining (pass {ri+1}/{self.config.recursive_depth})...\033[0m", end="", flush=True)
+                depth = min(self.config.recursive_depth, 2)
+                if self.config.recursive_intellect and depth > 0 and content:
+                    for ri in range(depth):
+                        print(f"\033[90m   🔄 Refining (pass {ri+1}/{depth})...\033[0m", end="", flush=True)
                         refined = self.client.chat.completions.create(
                             model=self.config.model_name,
                             messages=[
@@ -1517,7 +1518,6 @@ Respond as {agent.name} only:"""
                                     "Return ONLY the rewritten response, no critique bullets."
                                 )}
                             ],
-                            temperature=self.config.temperature,
                             max_tokens=self.config.max_tokens * 2,
                             timeout=self.config.timeout
                         )
