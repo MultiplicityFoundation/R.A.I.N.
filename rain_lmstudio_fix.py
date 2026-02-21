@@ -202,7 +202,8 @@ CRITICAL: KEEP YOUR ANALYSIS SHORT (UNDER 100 WORDS).
             print(f"⏳ Cycle Complete. Waiting {SHIFT_INTERVAL}s...", flush=True)
             time.sleep(SHIFT_INTERVAL)
 
-        except KeyboardInterrupt: sys.exit(0)
+        except KeyboardInterrupt:
+            sys.exit(0)
         except Exception as e:
             print(f"❌ CRITICAL ERROR: {e}")
             time.sleep(SHIFT_INTERVAL)
