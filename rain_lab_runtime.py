@@ -137,6 +137,14 @@ def _library_path() -> Path:
     return Path(raw).expanduser().resolve()
 
 
+def _is_relative_to(path: Path, base: Path) -> bool:
+    try:
+        path.relative_to(base)
+        return True
+    except ValueError:
+        return False
+
+
 def _sanitize_query(query: str, max_chars: int) -> str:
     text = query or ""
     for token in _CONTROL_TOKENS:
@@ -215,10 +223,23 @@ def _confidence_score(response_text: str, provenance: list[ProvenanceItem]) -> f
 
 
 def _trace_log_path() -> Path:
+    library = _library_path()
+    default_path = library / "meeting_archives" / "runtime_events.jsonl"
     env = os.environ.get("RAIN_RUNTIME_TRACE_PATH")
-    if env:
-        return Path(env)
-    return _library_path() / "meeting_archives" / "runtime_events.jsonl"
+    if not env:
+        return default_path
+
+    candidate = Path(env).expanduser()
+    if not candidate.is_absolute():
+        candidate = library / candidate
+    candidate = candidate.resolve()
+
+    if _env_bool("RAIN_ALLOW_EXTERNAL_TRACE_PATH", False):
+        return candidate
+
+    if _is_relative_to(candidate, library):
+        return candidate
+    return default_path
 
 
 def _append_trace_line(payload: dict[str, Any]) -> None:

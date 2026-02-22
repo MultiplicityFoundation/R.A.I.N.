@@ -30,6 +30,7 @@ def test_confidence_score_penalizes_speculation_and_uncertainty():
 def test_run_rain_lab_happy_path(monkeypatch, tmp_path):
     async_trace = tmp_path / "runtime_events.jsonl"
 
+    monkeypatch.setenv("JAMES_LIBRARY_PATH", str(tmp_path))
     monkeypatch.setenv("RAIN_RUNTIME_TRACE_PATH", str(async_trace))
     monkeypatch.setattr(
         runtime,
@@ -65,6 +66,7 @@ def test_run_rain_lab_happy_path(monkeypatch, tmp_path):
 
 def test_run_rain_lab_error_path(monkeypatch, tmp_path):
     async_trace = tmp_path / "runtime_events_error.jsonl"
+    monkeypatch.setenv("JAMES_LIBRARY_PATH", str(tmp_path))
     monkeypatch.setenv("RAIN_RUNTIME_TRACE_PATH", str(async_trace))
     monkeypatch.setattr(runtime, "_load_context", lambda: ("", []))
 
@@ -80,6 +82,7 @@ def test_run_rain_lab_error_path(monkeypatch, tmp_path):
 
 def test_run_rain_lab_strict_grounding_blocks_ungrounded(monkeypatch, tmp_path):
     async_trace = tmp_path / "runtime_events_strict.jsonl"
+    monkeypatch.setenv("JAMES_LIBRARY_PATH", str(tmp_path))
     monkeypatch.setenv("RAIN_RUNTIME_TRACE_PATH", str(async_trace))
     monkeypatch.setenv("RAIN_STRICT_GROUNDING", "1")
     monkeypatch.setenv("RAIN_MIN_GROUNDED_CONFIDENCE", "0.8")
@@ -133,3 +136,34 @@ def test_runtime_cli_main_blocked_exit(monkeypatch):
     monkeypatch.setattr(runtime, "run_rain_lab", _blocked)
     rc = runtime.main(["--topic", "x"])
     assert rc == 2
+
+
+def test_trace_path_defaults_inside_library(monkeypatch, tmp_path):
+    monkeypatch.setenv("JAMES_LIBRARY_PATH", str(tmp_path))
+    monkeypatch.delenv("RAIN_RUNTIME_TRACE_PATH", raising=False)
+    path = runtime._trace_log_path()
+    assert str(path).startswith(str(tmp_path))
+
+
+def test_trace_path_blocks_external_without_override(monkeypatch, tmp_path):
+    library = tmp_path / "lib"
+    library.mkdir()
+    external = tmp_path / "external" / "trace.jsonl"
+    monkeypatch.setenv("JAMES_LIBRARY_PATH", str(library))
+    monkeypatch.setenv("RAIN_RUNTIME_TRACE_PATH", str(external))
+    monkeypatch.delenv("RAIN_ALLOW_EXTERNAL_TRACE_PATH", raising=False)
+
+    path = runtime._trace_log_path()
+    assert path == (library / "meeting_archives" / "runtime_events.jsonl")
+
+
+def test_trace_path_allows_external_with_override(monkeypatch, tmp_path):
+    library = tmp_path / "lib"
+    library.mkdir()
+    external = tmp_path / "external" / "trace.jsonl"
+    monkeypatch.setenv("JAMES_LIBRARY_PATH", str(library))
+    monkeypatch.setenv("RAIN_RUNTIME_TRACE_PATH", str(external))
+    monkeypatch.setenv("RAIN_ALLOW_EXTERNAL_TRACE_PATH", "1")
+
+    path = runtime._trace_log_path()
+    assert path == external.resolve()

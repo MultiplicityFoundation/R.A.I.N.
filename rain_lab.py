@@ -78,9 +78,9 @@ def parse_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
     )
     parser.add_argument(
         "--mode",
-        choices=["rlm", "chat", "hello-os", "compile", "preflight"],
+        choices=["rlm", "chat", "hello-os", "compile", "preflight", "backup"],
         default="chat",
-        help="Which engine to run: rlm (tool-exec), chat (openai chat completions), hello-os (single executable), compile (build knowledge artifacts), or preflight (environment checks)",
+        help="Which engine to run: rlm (tool-exec), chat (openai chat completions), hello-os (single executable), compile (build knowledge artifacts), preflight (environment checks), or backup (local snapshot)",
     )
     parser.add_argument("--topic", type=str, default=None, help="Meeting topic")
     parser.add_argument(
@@ -129,6 +129,14 @@ def build_command(args: argparse.Namespace, passthrough: list[str], repo_root: P
     if args.mode == "preflight":
         target = repo_root / "rain_preflight_check.py"
         cmd = [sys.executable, str(target)]
+        cmd.extend(passthrough)
+        return cmd
+
+    if args.mode == "backup":
+        target = repo_root / "rain_lab_backup.py"
+        cmd = [sys.executable, str(target)]
+        if args.library:
+            cmd.extend(["--library", args.library])
         cmd.extend(passthrough)
         return cmd
 
@@ -201,7 +209,7 @@ def main(argv: list[str] | None = None) -> int:
     _print_banner()
 
     # Interactive prompt if topic is missing (and not asking for help)
-    if args.mode not in {"hello-os", "compile", "preflight"} and not args.topic and "-h" not in passthrough and "--help" not in passthrough:
+    if args.mode not in {"hello-os", "compile", "preflight", "backup"} and not args.topic and "-h" not in passthrough and "--help" not in passthrough:
         print(f"\n{ANSI_YELLOW}Research Topic needed.{ANSI_RESET}")
         print(f"{ANSI_DIM}Example: 'Guarino paper', 'Quantum Resonance', 'The nature of time'{ANSI_RESET}")
         try:

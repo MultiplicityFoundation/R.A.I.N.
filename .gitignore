@@ -6,3 +6,5 @@ __pycache__/
 venv/
 openclaw-main/
 vers3dynamics_lab/
+backups/
+meeting_archives/runtime_events.jsonl

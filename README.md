@@ -40,6 +40,7 @@ python rain_lab.py --mode chat --topic "your research topic"
 python rain_lab.py --mode rlm --topic "your research topic"
 python rain_lab.py --mode compile --library .
 python rain_lab.py --mode preflight
+python rain_lab.py --mode backup
 ```
 
 `--mode compile` builds local knowledge artifacts (`.rain_compile/`): TF-IDF, embeddings, entity graph, equation index, grounded quote spans, and contradiction candidates.
@@ -66,6 +67,7 @@ If you are running LM Studio in terminal mode, these scripts support environment
 - `RAIN_RUNTIME_RETRY_BACKOFF_S` (default `0.8`; retry backoff base seconds)
 - `RAIN_RUNTIME_MAX_QUERY_CHARS` (default `4000`; input safety limit)
 - `RAIN_RUNTIME_JSON_RESPONSE` (`1`/`0`, default `0`; structured API-friendly output)
+- `RAIN_ALLOW_EXTERNAL_TRACE_PATH` (`1`/`0`, default `0`; keep runtime trace logs inside workspace unless explicitly enabled)
 
 By default, recursive library scans skip vendored folders such as `openclaw-main/`, `vers3dynamics_lab/`, and `rlm-main/` to keep retrieval focused on the canonical R.A.I.N. workspace.
 
@@ -73,6 +75,23 @@ Recommended production-first local workflow:
 1. Run `python rain_lab.py --mode preflight`
 2. Enable strict grounding with `RAIN_STRICT_GROUNDING=1`
 3. Start with `python rain_lab.py --mode chat --topic "..."` and monitor `meeting_archives/runtime_events.jsonl`
+
+### Local backup snapshots
+
+Create a workspace snapshot zip (stored in `backups/` by default):
+
+```bash
+python rain_lab.py --mode backup
+```
+
+Direct command options:
+
+```bash
+python rain_lab_backup.py --library . --json
+python rain_lab_backup.py --library . --output ./backups/custom_snapshot.zip
+```
+
+By default, backup output is restricted to `./backups/` for safety. Set `RAIN_ALLOW_EXTERNAL_BACKUP_PATH=1` only if you intentionally need an external output path.
 
 Recursive intellect means each agent can do internal critique + revision passes before speaking, improving grounding, novelty, and clarity.
 

@@ -71,3 +71,9 @@ def test_build_command_preflight(repo_root):
     args, pt = parse_args(["--mode", "preflight"])
     cmd = build_command(args, pt, repo_root)
     assert "rain_preflight_check.py" in cmd[1]
+
+
+def test_build_command_backup(repo_root):
+    args, pt = parse_args(["--mode", "backup"])
+    cmd = build_command(args, pt, repo_root)
+    assert "rain_lab_backup.py" in cmd[1]
