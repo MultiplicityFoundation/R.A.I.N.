@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/rain_lab_banner.png" alt="R.A.I.N. Lab Banner" width="100%" />
+  <img src="assets/rain_lab_logo.png" alt="R.A.I.N. Lab Banner" width="100%" />
 </p>
 
 ## 🚀 open-source (beta) R.A.I.N. Lab
