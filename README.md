@@ -53,6 +53,26 @@ See also: [`ARCHITECTURE.md`](ARCHITECTURE.md) for a technical flow diagram of l
 
 Strategic roadmap: [`PRODUCT_ROADMAP.md`](PRODUCT_ROADMAP.md) for the trust, grounding, memory-governance, and autonomous research roadmap.
 
+### Reproducible local setup
+
+Recommended (cross-platform):
+
+```bash
+python bootstrap_local.py
+```
+
+Windows convenience installer:
+
+```powershell
+.\INSTALL_RAIN.ps1
+```
+
+The installer prefers pinned dependency sets when present:
+- `requirements-pinned.txt`
+- `requirements-dev-pinned.txt`
+
+Flexible (non-pinned) setup remains available via `requirements.txt` and `requirements-dev.txt`.
+
 ### Quick terminal setup (LM Studio)
 
 If you are running LM Studio in terminal mode, these scripts support environment-based defaults:
@@ -72,6 +92,7 @@ If you are running LM Studio in terminal mode, these scripts support environment
 - `RAIN_RUNTIME_MAX_QUERY_CHARS` (default `4000`; input safety limit)
 - `RAIN_RUNTIME_JSON_RESPONSE` (`1`/`0`, default `0`; structured API-friendly output)
 - `RAIN_ALLOW_EXTERNAL_TRACE_PATH` (`1`/`0`, default `0`; keep runtime trace logs inside workspace unless explicitly enabled)
+- `RAIN_ALLOW_EXTERNAL_BACKUP_PATH` (`1`/`0`, default `0`; allow backup zip output outside `./backups`)
 
 By default, recursive library scans skip vendored folders such as `openclaw-main/`, `vers3dynamics_lab/`, and `rlm-main/` to keep retrieval focused on the canonical R.A.I.N. workspace.
 
@@ -96,6 +117,13 @@ python rain_lab_backup.py --library . --output ./backups/custom_snapshot.zip
 ```
 
 By default, backup output is restricted to `./backups/` for safety. Set `RAIN_ALLOW_EXTERNAL_BACKUP_PATH=1` only if you intentionally need an external output path.
+
+### Operations docs
+
+- Troubleshooting: [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md)
+- Backup/restore walkthrough: [`docs/BACKUP_RESTORE.md`](docs/BACKUP_RESTORE.md)
+- Change history: [`CHANGELOG.md`](CHANGELOG.md)
+- Release workflow: [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md)
 
 Recursive intellect means each agent can do internal critique + revision passes before speaking, improving grounding, novelty, and clarity.
 
