@@ -112,9 +112,56 @@ def sanitize_text(text: str) -> str:
 
 
 
+def _parse_env_csv(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
+
+    """Parse comma-separated env values while preserving a deterministic tuple."""
+
+    raw = os.environ.get(name, "")
+
+    if not raw.strip():
+
+        return default
+
+    parsed = tuple(part.strip() for part in raw.split(",") if part.strip())
+
+    return parsed or default
+
+
+
+
 DEFAULT_LIBRARY_PATH = str(Path(__file__).resolve().parent)
 
 DEFAULT_MODEL_NAME = os.environ.get("LM_STUDIO_MODEL", "qwen2.5-coder-7b-instruct")
+
+DEFAULT_RECURSIVE_LIBRARY_SCAN = os.environ.get("RAIN_RECURSIVE_LIBRARY_SCAN", "0") == "1"
+
+DEFAULT_LIBRARY_EXCLUDE_DIRS = _parse_env_csv(
+
+    "RAIN_LIBRARY_EXCLUDE_DIRS",
+
+    (
+
+        ".git",
+
+        "__pycache__",
+
+        ".venv",
+
+        "venv",
+
+        "node_modules",
+
+        "meeting_archives",
+
+        "openclaw-main",
+
+        "vers3dynamics_lab",
+
+        "rlm-main",
+
+    ),
+
+)
 
 from typing import List, Dict, Optional, Tuple
 
@@ -432,9 +479,11 @@ class Config:
 
     total_context_length: int = 20000     # ~5k tokens for papers - allows full digestion
 
-    recursive_library_scan: bool = True      # Include nested folders (e.g., openclaw-main)
+    recursive_library_scan: bool = DEFAULT_RECURSIVE_LIBRARY_SCAN  # Default: top-level only
 
     max_library_files: int = 400             # Hard cap to prevent runaway scans
+
+    library_exclude_dirs: Tuple[str, ...] = DEFAULT_LIBRARY_EXCLUDE_DIRS
 
     
 
@@ -754,7 +803,7 @@ class ContextManager:
 
         """Discover candidate research files, optionally including nested directories."""
 
-        skip_dirs = {".git", "__pycache__", ".venv", "venv", "node_modules", "meeting_archives"}
+        skip_dirs = set(self.config.library_exclude_dirs)
 
         allowed_suffixes = (".md", ".txt", ".py")
 
@@ -3638,6 +3687,30 @@ Examples:
 
     )
 
+
+
+    parser.add_argument(
+
+        '--recursive-library-scan',
+
+        action='store_true',
+
+        help='Recursively scan nested folders in the research library'
+
+    )
+
+
+
+    parser.add_argument(
+
+        '--no-recursive-library-scan',
+
+        action='store_true',
+
+        help='Scan only top-level files in the research library (default)'
+
+    )
+
     
 
     parser.add_argument(
@@ -3728,6 +3801,18 @@ def main():
 
     
 
+    recursive_library_scan = DEFAULT_RECURSIVE_LIBRARY_SCAN
+
+    if args.recursive_library_scan:
+
+        recursive_library_scan = True
+
+    if args.no_recursive_library_scan:
+
+        recursive_library_scan = False
+
+
+
     # Create config from args
 
     config = Config(
@@ -3752,7 +3837,9 @@ def main():
 
         recursive_depth=max(1, args.recursive_depth),
 
-        recursive_intellect=not args.no_recursive_intellect
+        recursive_intellect=not args.no_recursive_intellect,
+
+        recursive_library_scan=recursive_library_scan
 
     )
 

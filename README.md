@@ -56,6 +56,10 @@ If you are running LM Studio in terminal mode, these scripts support environment
 - `JAMES_LIBRARY_PATH` (used by `chat_with_james.py`, defaults to this repo folder)
 - `RAIN_RECURSIVE_INTELLECT` (`1`/`0`, default enabled)
 - `RAIN_RECURSIVE_DEPTH` (default: `2`)
+- `RAIN_RECURSIVE_LIBRARY_SCAN` (`1`/`0`, default `0` for top-level-only scan)
+- `RAIN_LIBRARY_EXCLUDE_DIRS` (comma-separated folder names excluded from recursive scans)
+
+By default, recursive library scans skip vendored folders such as `openclaw-main/`, `vers3dynamics_lab/`, and `rlm-main/` to keep retrieval focused on the canonical R.A.I.N. workspace.
 
 Recursive intellect means each agent can do internal critique + revision passes before speaking, improving grounding, novelty, and clarity.
 
