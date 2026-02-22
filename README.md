@@ -39,6 +39,7 @@ Run the unified launcher and choose a mode:
 python rain_lab.py --mode chat --topic "your research topic"
 python rain_lab.py --mode rlm --topic "your research topic"
 python rain_lab.py --mode compile --library .
+python rain_lab.py --mode preflight
 ```
 
 `--mode compile` builds local knowledge artifacts (`.rain_compile/`): TF-IDF, embeddings, entity graph, equation index, grounded quote spans, and contradiction candidates.
@@ -58,8 +59,20 @@ If you are running LM Studio in terminal mode, these scripts support environment
 - `RAIN_RECURSIVE_DEPTH` (default: `2`)
 - `RAIN_RECURSIVE_LIBRARY_SCAN` (`1`/`0`, default `0` for top-level-only scan)
 - `RAIN_LIBRARY_EXCLUDE_DIRS` (comma-separated folder names excluded from recursive scans)
+- `RAIN_STRICT_GROUNDING` (`1`/`0`, default `0`; blocks ungrounded runtime answers when enabled)
+- `RAIN_MIN_GROUNDED_CONFIDENCE` (default `0.4`; strict grounding confidence threshold)
+- `RAIN_RUNTIME_TIMEOUT_S` (default `120`; OpenAI-compatible call timeout)
+- `RAIN_RUNTIME_RETRIES` (default `2`; retry count for transient runtime failures)
+- `RAIN_RUNTIME_RETRY_BACKOFF_S` (default `0.8`; retry backoff base seconds)
+- `RAIN_RUNTIME_MAX_QUERY_CHARS` (default `4000`; input safety limit)
+- `RAIN_RUNTIME_JSON_RESPONSE` (`1`/`0`, default `0`; structured API-friendly output)
 
 By default, recursive library scans skip vendored folders such as `openclaw-main/`, `vers3dynamics_lab/`, and `rlm-main/` to keep retrieval focused on the canonical R.A.I.N. workspace.
+
+Recommended production-first local workflow:
+1. Run `python rain_lab.py --mode preflight`
+2. Enable strict grounding with `RAIN_STRICT_GROUNDING=1`
+3. Start with `python rain_lab.py --mode chat --topic "..."` and monitor `meeting_archives/runtime_events.jsonl`
 
 Recursive intellect means each agent can do internal critique + revision passes before speaking, improving grounding, novelty, and clarity.
 

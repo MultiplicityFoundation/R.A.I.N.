@@ -1,4 +1,4 @@
-"""Unified async runtime for R.A.I.N. Lab integrations.
+﻿"""Unified async runtime for R.A.I.N. Lab integrations.
 
 This module provides a stable async entrypoint used by gateways (e.g. Telegram)
 with lightweight typed runtime state/events plus provenance extraction.
@@ -10,11 +10,19 @@ import asyncio
 import json
 import os
 import re
+import time
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
+
+try:
+    from truth_layer import Evidence, assert_grounded, build_grounded_response
+except Exception:
+    Evidence = None
+    assert_grounded = None
+    build_grounded_response = None
 
 
 @dataclass(slots=True)
@@ -50,13 +58,68 @@ class RuntimeState:
         )
 
 
+@dataclass(slots=True)
+class RuntimeConfig:
+    llm_timeout_s: float
+    llm_retries: int
+    llm_retry_backoff_s: float
+    max_query_chars: int
+    strict_grounding: bool
+    min_grounding_confidence: float
+    return_json: bool
+
+
 _RE_LOCAL_SOURCE = re.compile(r"\[from\s+([^\]]+?)\]", re.IGNORECASE)
 _RE_WEB_SOURCE = re.compile(r"\[from\s+web:\s*([^\]]+?)\]", re.IGNORECASE)
 _RE_QUOTE = re.compile(r'"([^"]+)"')
+_RE_WHITESPACE = re.compile(r"\s+")
+_CONTROL_TOKENS = ("<|endoftext|>", "<|im_start|>", "<|im_end|>", "|eoc_fim|")
+_VALID_MODES = {"chat", "rlm"}
 
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_int(name: str, default: int, minimum: int, maximum: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return max(minimum, min(maximum, value))
+
+
+def _env_float(name: str, default: float, minimum: float, maximum: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        return default
+    return max(minimum, min(maximum, value))
+
+
+def _load_runtime_config() -> RuntimeConfig:
+    return RuntimeConfig(
+        llm_timeout_s=_env_float("RAIN_RUNTIME_TIMEOUT_S", 120.0, 10.0, 600.0),
+        llm_retries=_env_int("RAIN_RUNTIME_RETRIES", 2, 0, 5),
+        llm_retry_backoff_s=_env_float("RAIN_RUNTIME_RETRY_BACKOFF_S", 0.8, 0.1, 5.0),
+        max_query_chars=_env_int("RAIN_RUNTIME_MAX_QUERY_CHARS", 4000, 100, 32000),
+        strict_grounding=_env_bool("RAIN_STRICT_GROUNDING", False),
+        min_grounding_confidence=_env_float("RAIN_MIN_GROUNDED_CONFIDENCE", 0.4, 0.0, 1.0),
+        return_json=_env_bool("RAIN_RUNTIME_JSON_RESPONSE", False),
+    )
 
 
 def _safe_agent_name(agent: Optional[str]) -> str:
@@ -69,7 +132,19 @@ def _safe_agent_name(agent: Optional[str]) -> str:
 
 def _library_path() -> Path:
     default_path = Path(__file__).resolve().parent
-    return Path(os.environ.get("JAMES_LIBRARY_PATH", str(default_path)))
+    raw = os.environ.get("JAMES_LIBRARY_PATH", str(default_path))
+    return Path(raw).expanduser().resolve()
+
+
+def _sanitize_query(query: str, max_chars: int) -> str:
+    text = query or ""
+    for token in _CONTROL_TOKENS:
+        text = text.replace(token, " ")
+    text = text.replace("\0", " ")
+    text = _RE_WHITESPACE.sub(" ", text).strip()
+    if len(text) > max_chars:
+        return text[:max_chars].rstrip()
+    return text
 
 
 def _load_context(max_chars: int = 12000, max_files: int = 40) -> tuple[str, list[str]]:
@@ -152,6 +227,20 @@ def _append_trace_line(payload: dict[str, Any]) -> None:
         f.write(json.dumps(payload, ensure_ascii=False) + "\n")
 
 
+def _trace_state(state: RuntimeState, **extra: Any) -> None:
+    payload = {
+        "timestamp": _utc_now(),
+        "session_id": state.session_id,
+        "status": state.status,
+        "query": state.query,
+        "mode": state.mode,
+        "agent": state.agent,
+        "events": [asdict(e) for e in state.events],
+    }
+    payload.update(extra)
+    _append_trace_line(payload)
+
+
 def _build_messages(
     query: str,
     mode: str,
@@ -197,6 +286,118 @@ def _call_llm_sync(messages: list[dict[str, str]], timeout_s: float) -> str:
     return (response.choices[0].message.content or "").strip()
 
 
+async def _call_llm_with_retries(
+    messages: list[dict[str, str]],
+    config: RuntimeConfig,
+    state: RuntimeState,
+) -> str:
+    last_error: Exception | None = None
+
+    for attempt in range(config.llm_retries + 1):
+        try:
+            return await asyncio.to_thread(_call_llm_sync, messages, config.llm_timeout_s)
+        except Exception as exc:
+            last_error = exc
+            state.add_event(
+                "llm_attempt_failed",
+                {
+                    "attempt": attempt + 1,
+                    "max_attempts": config.llm_retries + 1,
+                    "error": str(exc),
+                },
+            )
+            if attempt < config.llm_retries:
+                await asyncio.sleep(config.llm_retry_backoff_s * (attempt + 1))
+
+    assert last_error is not None
+    raise RuntimeError(f"LLM call failed after retries: {last_error}")
+
+
+def _build_grounding_payload(
+    answer: str,
+    confidence: float,
+    provenance: list[ProvenanceItem],
+    state: RuntimeState,
+) -> dict[str, Any]:
+    provenance_sources = [p.source for p in provenance]
+    repro_steps = [e.kind for e in state.events]
+
+    if build_grounded_response is None or Evidence is None:
+        return {
+            "answer": answer,
+            "confidence": confidence,
+            "provenance": provenance_sources,
+            "evidence": [asdict(p) for p in provenance],
+            "repro_steps": repro_steps,
+            "grounded": bool(provenance),
+            "red_badge": not bool(provenance),
+        }
+
+    evidence = [
+        Evidence(source=p.source, quote=(p.quote or ""), span_start=None, span_end=None)
+        for p in provenance
+    ]
+    return build_grounded_response(
+        answer=answer,
+        confidence=confidence,
+        provenance=provenance_sources,
+        evidence=evidence,
+        repro_steps=repro_steps,
+    )
+
+
+def runtime_healthcheck() -> dict[str, Any]:
+    config = _load_runtime_config()
+    library = _library_path()
+
+    checks: dict[str, bool] = {
+        "library_exists": library.exists(),
+        "trace_dir_writable": False,
+        "openai_importable": False,
+    }
+
+    try:
+        import openai  # noqa: F401
+        checks["openai_importable"] = True
+    except Exception:
+        checks["openai_importable"] = False
+
+    try:
+        trace_dir = _trace_log_path().parent
+        trace_dir.mkdir(parents=True, exist_ok=True)
+        checks["trace_dir_writable"] = os.access(trace_dir, os.W_OK)
+    except Exception:
+        checks["trace_dir_writable"] = False
+
+    return {
+        "ok": all(checks.values()),
+        "checks": checks,
+        "config": asdict(config),
+        "library_path": str(library),
+        "trace_path": str(_trace_log_path()),
+    }
+
+
+def _format_output(payload: dict[str, Any], return_json: bool) -> str:
+    if return_json:
+        return json.dumps(payload, ensure_ascii=False)
+
+    answer = payload.get("answer", "")
+    confidence = float(payload.get("confidence", 0.0))
+    provenance = payload.get("provenance", [])
+
+    lines = [answer.strip()] if answer else []
+    if provenance:
+        sources = ", ".join(sorted({str(s) for s in provenance})[:3])
+        lines.append(f"Provenance: {sources}")
+    lines.append(f"Confidence: {confidence:.2f}")
+
+    if not payload.get("grounded", True):
+        lines.append("Grounded: no")
+
+    return "\n\n".join(lines)
+
+
 async def run_rain_lab(
     query: str,
     mode: str = "chat",
@@ -204,20 +405,43 @@ async def run_rain_lab(
     recursive_depth: int = 1,
 ) -> str:
     """Unified async runtime entrypoint for non-CLI gateways."""
+    config = _load_runtime_config()
     resolved_agent = _safe_agent_name(agent)
+    safe_query = _sanitize_query(query, config.max_query_chars)
+
     state = RuntimeState(
         session_id=str(uuid.uuid4())[:8],
-        query=query,
+        query=safe_query,
         mode=mode,
         agent=resolved_agent,
     )
-    state.add_event("runtime_started", {"mode": mode, "agent": resolved_agent})
+    state.add_event(
+        "runtime_started",
+        {
+            "mode": mode,
+            "agent": resolved_agent,
+            "strict_grounding": config.strict_grounding,
+            "max_query_chars": config.max_query_chars,
+        },
+    )
+
+    if mode not in _VALID_MODES:
+        state.status = "error"
+        state.add_event("runtime_failed", {"error": f"Unsupported mode: {mode}"})
+        _trace_state(state)
+        return "R.A.I.N. runtime error: unsupported mode. Use 'chat' or 'rlm'."
+
+    if not safe_query:
+        state.status = "error"
+        state.add_event("runtime_failed", {"error": "Empty query after sanitization"})
+        _trace_state(state)
+        return "R.A.I.N. runtime error: query is empty after sanitization."
 
     context_block, paper_list = _load_context()
     state.add_event("context_loaded", {"papers": len(paper_list), "chars": len(context_block)})
 
     messages = _build_messages(
-        query=query,
+        query=safe_query,
         mode=mode,
         agent=resolved_agent,
         context_block=context_block,
@@ -226,50 +450,73 @@ async def run_rain_lab(
     state.add_event("llm_request_prepared", {"message_count": len(messages)})
 
     try:
-        response_text = await asyncio.to_thread(_call_llm_sync, messages, 120.0)
+        response_text = await _call_llm_with_retries(messages, config, state)
         state.status = "ok"
         state.add_event("llm_response_received", {"chars": len(response_text)})
     except Exception as exc:
         state.status = "error"
         state.add_event("runtime_failed", {"error": str(exc)})
-        _append_trace_line(
-            {
-                "timestamp": _utc_now(),
-                "session_id": state.session_id,
-                "status": state.status,
-                "query": query,
-                "mode": mode,
-                "agent": resolved_agent,
-                "events": [asdict(e) for e in state.events],
-            }
-        )
+        _trace_state(state)
         return "R.A.I.N. runtime error: unable to generate response."
 
     provenance = _extract_provenance(response_text)
     confidence = _confidence_score(response_text, provenance)
+    grounded = bool(provenance) and confidence >= config.min_grounding_confidence
+
+    if config.strict_grounding and not grounded:
+        response_text = (
+            "Grounding policy blocked this answer. "
+            "Please provide a narrower query or add supporting local sources."
+        )
+        state.status = "blocked"
+        state.add_event(
+            "grounding_blocked",
+            {
+                "sources": len(provenance),
+                "confidence": confidence,
+                "min_confidence": config.min_grounding_confidence,
+            },
+        )
+
     state.add_event(
         "provenance_analyzed",
         {
             "sources": len(provenance),
             "confidence": confidence,
+            "grounded": grounded,
         },
     )
 
-    _append_trace_line(
+    payload = _build_grounding_payload(
+        answer=response_text,
+        confidence=confidence,
+        provenance=provenance,
+        state=state,
+    )
+
+    if config.strict_grounding and assert_grounded is not None:
+        try:
+            assert_grounded(payload)
+        except ValueError as exc:
+            state.add_event("grounding_assertion_failed", {"error": str(exc)})
+            payload["grounded"] = False
+            payload["red_badge"] = True
+
+    payload.update(
         {
-            "timestamp": _utc_now(),
             "session_id": state.session_id,
             "status": state.status,
-            "query": query,
             "mode": mode,
             "agent": resolved_agent,
-            "confidence": confidence,
-            "provenance": [asdict(p) for p in provenance],
-            "events": [asdict(e) for e in state.events],
         }
     )
 
-    if provenance:
-        sources = ", ".join(sorted({p.source for p in provenance})[:3])
-        return f"{response_text}\n\nProvenance: {sources}\nConfidence: {confidence:.2f}"
-    return f"{response_text}\n\nConfidence: {confidence:.2f}"
+    _trace_state(
+        state,
+        confidence=confidence,
+        grounded=bool(payload.get("grounded", False)),
+        provenance=[asdict(p) for p in provenance],
+        response=payload,
+    )
+
+    return _format_output(payload, config.return_json)

@@ -65,3 +65,9 @@ def test_build_command_compile(repo_root):
     cmd = build_command(args, pt, repo_root)
     assert "library_compiler.py" in cmd[1]
     assert "--library" in cmd
+
+
+def test_build_command_preflight(repo_root):
+    args, pt = parse_args(["--mode", "preflight"])
+    cmd = build_command(args, pt, repo_root)
+    assert "rain_preflight_check.py" in cmd[1]

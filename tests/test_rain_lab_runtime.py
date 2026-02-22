@@ -75,3 +75,30 @@ def test_run_rain_lab_error_path(monkeypatch, tmp_path):
     out = asyncio.run(runtime.run_rain_lab(query="test", mode="chat", agent=None, recursive_depth=1))
     assert "runtime error" in out.lower()
     assert async_trace.exists()
+
+
+def test_run_rain_lab_strict_grounding_blocks_ungrounded(monkeypatch, tmp_path):
+    async_trace = tmp_path / "runtime_events_strict.jsonl"
+    monkeypatch.setenv("RAIN_RUNTIME_TRACE_PATH", str(async_trace))
+    monkeypatch.setenv("RAIN_STRICT_GROUNDING", "1")
+    monkeypatch.setenv("RAIN_MIN_GROUNDED_CONFIDENCE", "0.8")
+    monkeypatch.setattr(runtime, "_load_context", lambda: ("", []))
+    monkeypatch.setattr(runtime, "_call_llm_sync", lambda messages, timeout_s: "Ungrounded answer")
+
+    out = asyncio.run(runtime.run_rain_lab(query="test", mode="chat", agent="James", recursive_depth=1))
+    assert "grounding policy blocked" in out.lower()
+    assert "Grounded: no" in out
+
+    payload = json.loads(async_trace.read_text(encoding="utf-8").strip().splitlines()[-1])
+    assert payload["status"] == "blocked"
+    assert payload["grounded"] is False
+
+
+def test_runtime_healthcheck_smoke(tmp_path, monkeypatch):
+    monkeypatch.setenv("JAMES_LIBRARY_PATH", str(tmp_path))
+    monkeypatch.setenv("RAIN_RUNTIME_TRACE_PATH", str(tmp_path / "meeting_archives" / "runtime_events.jsonl"))
+
+    result = runtime.runtime_healthcheck()
+    assert "ok" in result
+    assert "checks" in result
+    assert "library_exists" in result["checks"]
