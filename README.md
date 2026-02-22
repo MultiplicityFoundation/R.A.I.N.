@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/rain_lab_banner.png" alt="R.A.I.N. Lab Banner" width="100%" />
+</p>
+
 ## 🚀 open-source (beta) R.A.I.N. Lab
 
 R.A.I.N. Lab (Recursive Architecture of Intelligent Nexus) is open source.
