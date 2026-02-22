@@ -61,6 +61,7 @@ class RLM:
         self.custom_system_prompt = custom_system_prompt
         self.verbose = verbose
         self.max_local_steps = max(1, int(self.environment_kwargs.get("max_local_steps", 4)))
+        self.local_followup_calls = _coerce_bool(self.environment_kwargs.get("local_followup_calls"), False)
         self._local_scope: dict[str, Any] | None = None
 
         if self.environment == "local":
@@ -76,7 +77,9 @@ class RLM:
         messages.append({"role": "user", "content": prompt})
 
         if self.environment == "local":
-            return self._completion_with_local_tools(messages)
+            if self.local_followup_calls:
+                return self._completion_with_local_tools(messages)
+            return self._completion_single_pass_local(messages)
         return self._chat_completion(messages)
 
     def _run_setup_code(self, setup_code: str) -> None:
@@ -108,6 +111,23 @@ class RLM:
             text = output.getvalue().strip()
             prefix = f"{text}\n" if text else ""
             return False, prefix + f"{exc.__class__.__name__}: {exc}"
+
+    def _completion_single_pass_local(self, messages: list[dict[str, str]]) -> CompletionResult:
+        """Run exactly one model inference and execute any local python blocks."""
+        result = self._chat_completion(messages)
+        code_blocks = _extract_python_code_blocks(result.response)
+        if not code_blocks:
+            return result
+
+        execution_notes: list[tuple[int, bool, str]] = []
+        for i, code in enumerate(code_blocks, 1):
+            ok, local_output = self._run_local_code(code)
+            execution_notes.append((i, ok, local_output))
+
+        cleaned = _strip_python_code_blocks(result.response).strip()
+        summary = _format_local_execution_notes(execution_notes)
+        response = f"{cleaned}\n\n{summary}".strip() if cleaned else summary
+        return CompletionResult(response=response, raw=result.raw)
 
     def _completion_with_local_tools(self, messages: list[dict[str, str]]) -> CompletionResult:
         last_result: CompletionResult | None = None
@@ -235,6 +255,32 @@ def _extract_python_code_blocks(text: str) -> list[str]:
         if code:
             blocks.append(code)
     return blocks
+
+
+def _strip_python_code_blocks(text: str) -> str:
+    return _PYTHON_BLOCK_RE.sub("", text).strip()
+
+
+def _format_local_execution_notes(notes: list[tuple[int, bool, str]]) -> str:
+    if not notes:
+        return "Local tool output: [no output]"
+
+    lines = ["Local tool output:"]
+    for idx, ok, output in notes:
+        status = "ok" if ok else "error"
+        collapsed = " | ".join(str(output).splitlines())
+        if len(collapsed) > 180:
+            collapsed = collapsed[:177] + "..."
+        lines.append(f"- python block {idx} [{status}]: {collapsed}")
+    return "\n".join(lines)
+
+
+def _coerce_bool(value: Any, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
 __all__ = ["RLM", "CompletionResult"]
