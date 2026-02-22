@@ -30,10 +30,7 @@ class _FakeHTTPResponse:
 
 def test_local_environment_executes_setup_code_and_python_blocks(monkeypatch):
     request_payloads: list[dict] = []
-    responses = [
-        json.dumps({"choices": [{"message": {"content": "```python\nprint(tool_ping())\n```"}}]}),
-        json.dumps({"choices": [{"message": {"content": "Final answer using tool output."}}]}),
-    ]
+    responses = [json.dumps({"choices": [{"message": {"content": "```python\nprint(tool_ping())\n```"}}]})]
 
     def _fake_urlopen(req, timeout):  # noqa: ARG001
         request_payloads.append(json.loads(req.data.decode("utf-8")))
@@ -46,9 +43,9 @@ def test_local_environment_executes_setup_code_and_python_blocks(monkeypatch):
     )
 
     result = client.completion("Run tools")
-    assert result.response == "Final answer using tool output."
-    assert len(request_payloads) == 2
-    assert "pong" in request_payloads[1]["messages"][-1]["content"]
+    assert len(request_payloads) == 1
+    assert "Local tool output:" in result.response
+    assert "pong" in result.response
 
 
 def test_local_environment_invalid_setup_code_raises():
@@ -72,6 +69,7 @@ def test_local_environment_limits_python_tool_loops(monkeypatch):
         environment="local",
         environment_kwargs={
             "setup_code": "pass",
+            "local_followup_calls": True,
             "max_local_steps": 2,
         },
     )
@@ -95,7 +93,10 @@ def test_local_environment_reports_python_syntax_error_to_model(monkeypatch):
     monkeypatch.setattr(rlm.request, "urlopen", _fake_urlopen)
     client = rlm.RLM(
         environment="local",
-        environment_kwargs={"setup_code": "pass"},
+        environment_kwargs={
+            "setup_code": "pass",
+            "local_followup_calls": True,
+        },
     )
 
     result = client.completion("syntax")
