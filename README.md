@@ -15,7 +15,7 @@ R.A.I.N. Lab is designed for people who want high-agency workflows: researchers,
 If this is your first time in the repo, use this sequence:
 
 ```bash
-python bootstrap_local.py
+cd <where-you-downloaded it>
 python rain_lab.py --mode first-run
 python rain_lab.py --mode chat --topic "your first research question"
 ```
