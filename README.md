@@ -16,7 +16,7 @@
   </a>
   <img src="https://img.shields.io/badge/python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python" />
   <img src="https://img.shields.io/badge/framework-Multi--Agent-8A2BE2?style=flat-square" alt="Framework" />
-  <img src="https://img.shields.io/badge/deploy-OpenClaw-0A66C2?style=flat-square" alt="Deploy" />
+  <img src="https://img.shields.io/badge/deploy-Vers3Dynamics-0A66C2?style=flat-square" alt="Deploy" />
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License" />
 </p>
 
