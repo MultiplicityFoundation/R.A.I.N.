@@ -2,13 +2,33 @@
   <img src="assets/rain_lab_logo.png" alt="R.A.I.N. Lab Banner" width="100%" />
 </p>
 
-## 🚀 open-source (beta) R.A.I.N. Lab
+<h1 align="center">🧪 R.A.I.N. Lab</h1>
 
-R.A.I.N. Lab (Recursive Architecture of Intelligent Nexus) is open source.
+<p align="center">
+  <strong>
+    Local-first multi-agent AI research lab with recursive reasoning, source-grounded memory, and sovereign workflows.
+  </strong>
+</p>
 
-This idea started as a local skunkworks experiment: what happens when agents are built as research partners rather than a single chatbot? The result is a multi-agent, local-first system in which specialized AI scientists collaborate, debate, critique, and synthesize ideas within your own knowledge base.
+<p align="center">
+  <a href="https://github.com/">
+    <img src="https://img.shields.io/badge/website-open--source-3ecf8e?style=flat-square" alt="Website" />
+  </a>
+  <img src="https://img.shields.io/badge/python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python" />
+  <img src="https://img.shields.io/badge/framework-Multi--Agent-8A2BE2?style=flat-square" alt="Framework" />
+  <img src="https://img.shields.io/badge/deploy-OpenClaw-0A66C2?style=flat-square" alt="Deploy" />
+  <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License" />
+</p>
 
-R.A.I.N. Lab is designed for people who want high-agency workflows: researchers, founders, engineers, and independent labs who care about sovereignty, technical depth, and iterative discovery.
+<p align="center">
+  R.A.I.N. Lab (Recursive Architecture of Intelligent Nexus) began as a local skunkworks experiment:
+  what happens when AI agents are built as research partners instead of a single chatbot?
+</p>
+
+<p align="center">
+  The result is a high-agency system where specialized AI scientists collaborate, debate, critique,
+  and synthesize ideas inside your own knowledge base.
+</p>
 
 ### Start Here (5 Minutes)
 
