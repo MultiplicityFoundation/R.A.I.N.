@@ -318,4 +318,4 @@ MIT License - See [LICENSE](LICENSE) for details.
 
 **Vers3Dynamics** — Where autonomous AI agency meets acoustic physics research.
 
-Built with precision by Guarino Industries LLC.
+Built with precision by itself.
