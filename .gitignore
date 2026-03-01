@@ -1,6 +1,3 @@
-<<<<<<< HEAD
-james_library-main/
-=======
 # Python
 __pycache__/
 *.py[cod]
@@ -48,6 +45,7 @@ htmlcov/
 Thumbs.db
 
 # Project-specific
+james_library-main/
 openclaw-main/
 vers3dynamics_lab/
 backups/
@@ -69,4 +67,3 @@ target/
 
 # Jupyter
 .ipynb_checkpoints/
->>>>>>> 1145494aa9240155d5d88fdd62050cd53c475cab
