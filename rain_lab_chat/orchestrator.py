@@ -395,8 +395,6 @@ class RainLabOrchestrator:
 
         # Meeting setup
 
-        history_log = []
-
         turn_count = 0
         effective_max_turns = max(self.config.max_turns, len(self.team))
         if effective_max_turns != self.config.max_turns:
@@ -416,11 +414,12 @@ class RainLabOrchestrator:
         print("=" * 70 + "\n")
 
         kickoff_agent = next((member for member in self.team if member.name == "James"), self.team[0])
-        kickoff_message = (
-            f"{kickoff_agent.name}: Topic received: {topic}. "
-            "I am bringing it to the table now while I prepare the opening take."
-        )
-        print(f"{kickoff_agent.color}{kickoff_message}\033[0m")
+        kickoff_greeting = f"Hey team, let's talk about {topic}."
+        print(f"\n{kickoff_agent.color}{'─' * 70}")
+        print(f"{kickoff_agent.name}: {kickoff_greeting}")
+        print(f"{'─' * 70}\033[0m")
+        self.voice_engine.speak(kickoff_greeting, agent_name=kickoff_agent.name)
+        history_log = [f"{kickoff_agent.name}: {kickoff_greeting}"]
 
         # Track wrap-up phase
 
@@ -567,7 +566,7 @@ class RainLabOrchestrator:
 
             print(f"{'─' * 70}\033[0m")
 
-            spoken_text = f"{current_agent.name}: {clean_response}"
+            spoken_text = clean_response
             if self.config.emit_visual_events:
                 turn_id = f"t_{turn_count + 1:04d}"
                 audio_payload = self._export_audio_payload(turn_id, spoken_text, current_agent.name)

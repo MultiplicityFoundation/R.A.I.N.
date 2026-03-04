@@ -2569,3 +2569,9 @@ MODE: GENIUS
 
 **James:** Elena, building on your point: from the papers, time is framed as dynamic location rather than a fixed line. Let's compare one claim from 'Temporal Re-Localization via Scalar Resonance' with one from 'Location is a Dynamic Variable', then isolate the first falsifiable test.
 
+**Jasmine:** [SEARCH: Materials and components for time travel]
+
+**Luca:** Jasmine, building on your point: I read this as a field-geometry question: if time is re-localization, we need a stable topology for transitions. Let's map resonance nodes and gradients, then choose the geometry that keeps coherence intact.
+
+**Elena:** Luca, building on your point: I want hard bounds around 'How can we time travel?': entropy cost, computational complexity, and stability limits. If the papers cannot quantify those, we should separate what is formally supported from what is speculative.
+
