@@ -217,6 +217,10 @@ pub struct Config {
     /// Voice transcription configuration (Whisper API via Groq).
     #[serde(default)]
     pub transcription: TranscriptionConfig,
+
+    /// R.A.I.N. Lab Python bridge configuration (`[rain_lab]`).
+    #[serde(default)]
+    pub rain_lab: RainLabConfig,
 }
 
 /// Named provider profile definition compatible with Codex app-server style config.
@@ -388,6 +392,41 @@ impl Default for TranscriptionConfig {
             model: default_transcription_model(),
             language: None,
             max_duration_secs: default_transcription_max_duration_secs(),
+        }
+    }
+}
+
+/// R.A.I.N. Lab Python bridge configuration (`[rain_lab]` section).
+///
+/// When enabled, the gateway proxies `/api/meeting/*` requests to the
+/// Python bridge server running on the configured host/port.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RainLabConfig {
+    /// Enable the R.A.I.N. Lab meeting bridge.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Python bridge server host (default: 127.0.0.1).
+    #[serde(default = "default_rain_lab_host")]
+    pub bridge_host: String,
+    /// Python bridge server port (default: 7420).
+    #[serde(default = "default_rain_lab_port")]
+    pub bridge_port: u16,
+}
+
+fn default_rain_lab_host() -> String {
+    "127.0.0.1".into()
+}
+
+fn default_rain_lab_port() -> u16 {
+    7420
+}
+
+impl Default for RainLabConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bridge_host: default_rain_lab_host(),
+            bridge_port: default_rain_lab_port(),
         }
     }
 }

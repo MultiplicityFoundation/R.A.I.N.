@@ -4,6 +4,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List
 
+from rain_lab_chat._logging import get_logger
+
+log = get_logger(__name__)
+
 
 @dataclass
 class Agent:
@@ -60,17 +64,17 @@ class Agent:
                 self._soul_cache = external_soul + meeting_rules
 
                 if verbose:
-                    print(f"     ✓ Loaded soul: {soul_filename}")
+                    log.info("Loaded soul: %s", soul_filename)
 
                 return self._soul_cache
 
             except Exception as e:
                 if verbose:
-                    print(f"     ⚠️ Error loading {soul_filename}: {e}")
+                    log.warning("Error loading %s: %s", soul_filename, e)
 
         else:
             if verbose:
-                print(f"     ⚠️ No soul file found: {soul_filename} (using default)")
+                log.info("No soul file found: %s (using default)", soul_filename)
 
         # Fallback to generated soul
 

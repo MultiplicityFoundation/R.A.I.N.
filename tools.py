@@ -148,7 +148,7 @@ def _init_rag():
                     torch_lib = tlib
                     paths_to_add.append(tlib)
                     break
-        except: pass
+        except Exception: pass
 
         # Add to PATH (Prepend to ensure priority)
         if paths_to_add:
@@ -158,7 +158,7 @@ def _init_rag():
         if hasattr(os, 'add_dll_directory'):
             for p in paths_to_add:
                 try: os.add_dll_directory(p)
-                except: pass
+                except Exception: pass
 
         # 3. EXPLICIT PRE-LOADING (The Nuclear Option)
         # Pre-load dependencies to ensure they are in memory before c10.dll tries to load
@@ -167,7 +167,7 @@ def _init_rag():
             path = os.path.join(directory, name)
             if os.path.exists(path):
                 try: ctypes.CDLL(path)
-                except: pass
+                except Exception: pass
 
         force_load("msvcp140.dll", conda_lib)
         force_load("vcruntime140.dll", conda_lib)
@@ -259,7 +259,7 @@ def search_web(query):
         try:
             with DDGS() as ddgs:
                 results = list(ddgs.text(query, max_results=5))
-        except:
+        except Exception:
              # Fallback for older versions or if context manager fails
              results = list(DDGS().text(query, max_results=5))
 
@@ -379,7 +379,7 @@ def search_library(query):
                 if match_count > 0:
                      score = match_count / len(keywords)
                      results.append((score, filename, [k for k in keywords if k in content_lower]))
-        except:
+        except Exception:
             pass
 
     # Sort by score
@@ -864,7 +864,7 @@ def compare_metrics(paper1_claims: list, paper2_claims: list) -> str:
                 result += "Paper 2 has higher average values.\n"
             else:
                 result += "Similar average magnitudes.\n"
-        except:
+        except Exception:
             pass
 
     return result
@@ -976,7 +976,7 @@ def _load_memory():
                 data = json.load(f)
                 _entities = data.get('entities', {})
                 _topics = data.get('topics', [])
-    except:
+    except Exception:
         pass
 
 
@@ -987,7 +987,7 @@ def _save_memory():
         import json
         with open(_memory_file, 'w') as f:
             json.dump({'entities': _entities, 'topics': _topics}, f)
-    except:
+    except Exception:
         pass
 
 

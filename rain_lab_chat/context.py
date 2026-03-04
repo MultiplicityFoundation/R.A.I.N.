@@ -6,8 +6,11 @@ import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from rain_lab_chat._logging import get_logger
 from rain_lab_chat._sanitize import sanitize_text
 from rain_lab_chat.config import Config
+
+log = get_logger(__name__)
 
 NON_PAPER_STEMS = {
     "AGENTS",
@@ -172,10 +175,10 @@ class ContextManager:
         self.paper_list = []
 
         if verbose:
-            print(f"\n📂 Accessing Research Library at: {self.lab_path}")
+            log.info("Accessing Research Library at: %s", self.lab_path)
 
         if not self.lab_path.exists():
-            print(f"❌ Library path does not exist: {self.lab_path}")
+            log.error("Library path does not exist: %s", self.lab_path)
 
             return "Library not accessible.", []
 
@@ -188,15 +191,15 @@ class ContextManager:
         if verbose:
             scope = "recursive" if self.config.recursive_library_scan else "top-level"
 
-            print(f"   • Scan mode: {scope}; files discovered: {len(all_files)}")
+            log.info("Scan mode: %s; files discovered: %d", scope, len(all_files))
 
         if not all_files:
-            print("⚠️  No research papers found in library.")
+            log.warning("No research papers found in library.")
 
             return "No research papers found in library.", []
 
         if verbose:
-            print(f"   ✓ Found {len(all_files)} papers.\n")
+            log.info("Found %d papers.", len(all_files))
 
         total_chars = 0
 
@@ -247,15 +250,15 @@ class ContextManager:
                         if verbose:
                             coverage = (to_include / len(content)) * 100 if len(content) > 0 else 100
 
-                            print(f"     ✓ Loaded: {paper_ref} ({to_include:,} chars, {coverage:.0f}% coverage)")
+                            log.info("Loaded: %s (%s chars, %.0f%% coverage)", paper_ref, f"{to_include:,}", coverage)
 
                     else:
                         if verbose:
-                            print(f"     ⚠ Skipped {paper_ref} (budget exhausted)")
+                            log.info("Skipped %s (budget exhausted)", paper_ref)
 
             except Exception as e:
                 if verbose:
-                    print(f"     ✗ Error reading {filepath.name}: {e}")
+                    log.warning("Error reading %s: %s", filepath.name, e)
 
                 continue
 
@@ -268,9 +271,8 @@ class ContextManager:
         combined = "\n".join(buffer)
 
         if verbose:
-            print(f"\n   📊 Total context loaded: {len(combined):,} characters")
-
-            print(f"   📊 Papers with full coverage: {len([p for p in self.loaded_papers.keys()])}")
+            log.info("Total context loaded: %s characters", f"{len(combined):,}")
+            log.info("Papers with full coverage: %d", len(list(self.loaded_papers.keys())))
 
         return combined, self.paper_list
 

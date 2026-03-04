@@ -39,6 +39,7 @@ except ImportError:
 
         def query(self, **_kw):
             return None
+
 from rain_lab_chat._sanitize import RE_WEB_SEARCH_COMMAND
 from rain_lab_chat.agents import Agent, RainLabAgentFactory
 from rain_lab_chat.citations import CitationAnalyzer

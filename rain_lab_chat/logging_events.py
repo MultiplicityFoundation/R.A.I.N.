@@ -8,8 +8,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional
 
+from rain_lab_chat._logging import get_logger
 from rain_lab_chat._sanitize import sanitize_text
 from rain_lab_chat.config import Config
+
+log = get_logger(__name__)
 
 
 class LogManager:
@@ -44,7 +47,7 @@ class LogManager:
                 self._rotate_log()
 
         except Exception as e:
-            print(f"⚠️  Log rotation check failed: {e}")
+            log.warning("Log rotation check failed: %s", e)
 
     def _rotate_log(self):
         """Move current log to archive with timestamp"""
@@ -68,12 +71,10 @@ class LogManager:
 
             shutil.move(str(self.log_path), str(archive_path))
 
-            print(f"📁 Log rotated to: {archive_path.name}")
-
-            print(f"   Old log archived ({archive_path.stat().st_size // 1024}KB)")
+            log.info("Log rotated to: %s (%dKB)", archive_path.name, archive_path.stat().st_size // 1024)
 
         except Exception as e:
-            print(f"⚠️  Log rotation failed: {e}")
+            log.warning("Log rotation failed: %s", e)
 
     def archive_now(self):
         """Force archive the current log (callable externally)"""
@@ -81,10 +82,10 @@ class LogManager:
         if self.log_path.exists() and self.log_path.stat().st_size > 0:
             self._rotate_log()
 
-            print("✅ Log archived successfully")
+            log.info("Log archived successfully")
 
         else:
-            print("ℹ️  No log to archive")
+            log.info("No log to archive")
 
     def initialize_log(self, topic: str, paper_count: int):
 
@@ -154,7 +155,7 @@ SESSION ENDED
                 f.write(text)
 
         except Exception as e:
-            print(f"⚠️  Logging error: {e}")
+            log.warning("Logging error: %s", e)
 
 
 class VisualEventLogger:
@@ -170,7 +171,7 @@ class VisualEventLogger:
                 self.path.parent.mkdir(parents=True, exist_ok=True)
 
             except Exception as e:
-                print(f"Warning: Visual event logger unavailable: {e}")
+                log.warning("Visual event logger unavailable: %s", e)
 
                 self.enabled = False
 
@@ -195,7 +196,7 @@ class VisualEventLogger:
                 f.write(json.dumps(event, ensure_ascii=False) + "\n")
 
         except Exception as e:
-            print(f"Warning: Visual event write failed: {e}")
+            log.warning("Visual event write failed: %s", e)
 
 
 class Diplomat:
@@ -234,7 +235,7 @@ class Diplomat:
             content = sanitize_text(content)
 
         except Exception as e:
-            print(f"⚠️  Failed to read diplomat message '{message_file}': {e}")
+            log.warning("Failed to read diplomat message '%s': %s", message_file, e)
 
             return None
 
@@ -244,7 +245,7 @@ class Diplomat:
             shutil.move(message_file, archived_path)
 
         except Exception as e:
-            print(f"⚠️  Failed to archive diplomat message '{message_file}': {e}")
+            log.warning("Failed to archive diplomat message '%s': %s", message_file, e)
 
             return None
 

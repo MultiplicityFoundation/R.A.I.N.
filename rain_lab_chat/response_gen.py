@@ -6,12 +6,15 @@ from typing import Optional, Tuple
 
 import openai
 
+from rain_lab_chat._logging import get_logger
 from rain_lab_chat.agents import Agent
 from rain_lab_chat.config import Config
 from rain_lab_chat.guardrails import (
     complete_truncated,
     detect_repeated_intro,
 )
+
+log = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Prompt construction
@@ -155,48 +158,38 @@ def call_llm_with_retry(
             return content, finish_reason
 
         except TimeoutError:
-            print(f"\n⏱️  Timeout (attempt {attempt + 1}/{retries})")
+            log.warning("Timeout (attempt %d/%d)", attempt + 1, retries)
             if attempt < retries - 1:
-                print("   Retrying in 2 seconds...")
                 time.sleep(2)
             else:
-                print("\n💡 The model might be overloaded. Try:")
-                print("   1. Reducing max_tokens in Config")
-                print("   2. Checking LM Studio's server logs")
+                log.error("LLM request timed out after %d retries. Check LM Studio.", retries)
                 return None, None
 
         except openai.APITimeoutError:
-            print(f"\n⏱️  Timeout (attempt {attempt + 1}/{retries})")
+            log.warning("API timeout (attempt %d/%d)", attempt + 1, retries)
             if attempt < retries - 1:
-                print("   Retrying in 2 seconds...")
                 time.sleep(2)
             else:
-                print("\n💡 The model might be overloaded. Try:")
-                print("   1. Reducing max_tokens in Config")
-                print("   2. Checking LM Studio's server logs")
+                log.error("LLM API timed out after %d retries.", retries)
                 return None, None
 
         except openai.APIConnectionError:
-            print(f"\n❌ Connection Lost (attempt {attempt + 1}/{retries})")
+            log.warning("Connection lost (attempt %d/%d)", attempt + 1, retries)
             if attempt < retries - 1:
-                print("   Retrying in 3 seconds...")
                 time.sleep(3)
             else:
-                print("\n💡 Connection failed after retries. Check:")
-                print("   1. Is LM Studio still running?")
-                print("   2. Did the model unload? (Check LM Studio model tab)")
-                print("   3. Try reloading the model in LM Studio")
+                log.error("Connection failed after %d retries. Is LM Studio running?", retries)
                 return None, None
 
         except openai.APIError as e:
-            print(f"\n❌ API Error: {e}")
+            log.error("API error: %s", e)
             if attempt < retries - 1:
                 time.sleep(2)
             else:
                 return None, None
 
         except Exception as e:
-            print(f"\n❌ Unexpected Error: {e}")
+            log.exception("Unexpected LLM error: %s", e)
             return None, None
 
     return None, None
@@ -305,7 +298,7 @@ def handle_truncation(
     if not is_truncated:
         return content
 
-    print("(completing...)", end=" ", flush=True)
+    log.debug("Attempting truncation completion for %d-char response", len(content))
     try:
         cont_text, _ = call_llm_with_retry(
             client,
@@ -320,7 +313,7 @@ def handle_truncation(
             else:
                 return complete_truncated(content)
     except Exception:
-        pass
+        log.debug("Truncation completion LLM call failed; using heuristic")
 
     return complete_truncated(content)
 

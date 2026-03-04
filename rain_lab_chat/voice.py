@@ -3,9 +3,14 @@
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from rain_lab_chat._logging import get_logger
+
+log = get_logger(__name__)
+
 try:
     import pyttsx3 as _pyttsx3
-except Exception:
+except (ImportError, OSError) as _exc:
+    log.debug("pyttsx3 unavailable: %s", _exc)
     _pyttsx3 = None
 pyttsx3 = _pyttsx3
 
@@ -35,12 +40,8 @@ class VoiceEngine:
         self._try_init_engine()
 
     def _safe_print(self, message: str) -> None:
-        """Print warnings without crashing on non-UTF-8 terminals."""
-
-        try:
-            print(message)
-        except UnicodeEncodeError:
-            print(message.encode("ascii", errors="ignore").decode("ascii", errors="ignore"))
+        """Log warnings without crashing on non-UTF-8 terminals."""
+        log.warning("%s", message)
 
     def _init_fallback_backend(self) -> None:
         """Initialize optional fallback TTS backend from tts_module."""
@@ -49,7 +50,8 @@ class VoiceEngine:
             from tts_module import get_tts
 
             self._fallback_tts = get_tts(enabled=True, backend="auto")
-        except Exception:
+        except (ImportError, OSError) as exc:
+            log.debug("Fallback TTS backend unavailable: %s", exc)
             self._fallback_tts = None
 
     def _try_init_engine(self) -> bool:
@@ -84,7 +86,7 @@ class VoiceEngine:
         try:
             available_voices = self.engine.getProperty("voices") or []
 
-        except Exception:
+        except (RuntimeError, OSError):
             available_voices = []
 
         male_voice_id = None

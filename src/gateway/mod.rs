@@ -8,6 +8,7 @@
 //! - Header sanitization (handled by axum/hyper)
 
 pub mod api;
+pub mod meeting;
 pub mod sse;
 pub mod static_files;
 pub mod ws;
@@ -712,6 +713,10 @@ pub async fn run_gateway(host: &str, port: u16, config: Config) -> Result<()> {
         .route("/api/cost", get(api::handle_api_cost))
         .route("/api/cli-tools", get(api::handle_api_cli_tools))
         .route("/api/health", get(api::handle_api_health))
+        // ── R.A.I.N. Lab meeting bridge ──
+        .route("/api/meeting/start", post(meeting::handle_meeting_start))
+        .route("/api/meeting/stop", post(meeting::handle_meeting_stop))
+        .route("/api/meeting/status", get(meeting::handle_meeting_status))
         // ── SSE event stream ──
         .route("/api/events", get(sse::handle_sse_events))
         // ── WebSocket agent chat ──

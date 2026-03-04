@@ -4,8 +4,11 @@ import time
 import warnings
 from typing import Dict, List, Tuple
 
+from rain_lab_chat._logging import get_logger
 from rain_lab_chat._sanitize import sanitize_text
 from rain_lab_chat.config import Config
+
+log = get_logger(__name__)
 
 # Optional: DuckDuckGo search support
 DDG_AVAILABLE = False
@@ -56,9 +59,7 @@ class WebSearchManager:
 
         if not self.enabled:
             if self.config.enable_web_search and verbose:
-                print(f"\n⚠️  Web search disabled: No DDG package installed")
-
-                print("   Install with: pip install ddgs")
+                log.warning("Web search disabled: No DDG package installed. Install with: pip install ddgs")
 
             return "", []
 
@@ -66,12 +67,12 @@ class WebSearchManager:
 
         if query in self.search_cache:
             if verbose:
-                print(f"\n🔄 Using cached web results for: '{query}'")
+                log.info("Using cached web results for: '%s'", query)
 
             return self._format_results(self.search_cache[query]), self.search_cache[query]
 
         if verbose:
-            print(f"\n🌐 Searching web for: '{query}'...")
+            log.info("Searching web for: '%s'", query)
 
         # Retry loop with exponential backoff
 
@@ -94,12 +95,10 @@ class WebSearchManager:
 
                 if results:
                     if verbose:
-                        print(f"   ✓ Found {len(results)} web results")
-
+                        log.info("Found %d web results", len(results))
                         for i, r in enumerate(results, 1):
                             title_preview = r["title"][:60] + "..." if len(r["title"]) > 60 else r["title"]
-
-                            print(f"      {i}. {title_preview}")
+                            log.debug("  %d. %s", i, title_preview)
 
                     return self._format_results(results), results
 
@@ -108,20 +107,13 @@ class WebSearchManager:
 
                     if attempt < self.max_retries - 1:
                         delay = self.retry_delay * (attempt + 1)
-
                         if verbose:
-                            print(
-                                f"   ⚠ No results (attempt {attempt + 1}/{self.max_retries}), retrying in {delay:.1f}s..."
-                            )
-
+                            log.info("No results (attempt %d/%d), retrying in %.1fs", attempt + 1, self.max_retries, delay)
                         time.sleep(delay)
 
                     else:
                         if verbose:
-                            print(f"   ⚠ No web results found after {self.max_retries} attempts")
-
-                            print("   💡 Possible causes: rate limiting, network issues, or overly specific query")
-
+                            log.warning("No web results after %d attempts", self.max_retries)
                         return "", []
 
             except Exception as e:
@@ -143,18 +135,13 @@ class WebSearchManager:
 
                 if attempt < self.max_retries - 1:
                     delay = self.retry_delay * (attempt + 1)
-
                     if verbose:
-                        print(f"   ⚠ {reason} (attempt {attempt + 1}/{self.max_retries}), retrying in {delay:.1f}s...")
-
+                        log.warning("%s (attempt %d/%d), retrying in %.1fs", reason, attempt + 1, self.max_retries, delay)
                     time.sleep(delay)
 
                 else:
                     if verbose:
-                        print(f"   ⚠ Web search failed after {self.max_retries} attempts: {reason}")
-
-                        print("   💡 Meeting will proceed with local papers only")
-
+                        log.warning("Web search failed after %d attempts: %s", self.max_retries, reason)
                     return "", []
 
         return "", []
@@ -222,6 +209,5 @@ class WebSearchManager:
             return self._sanitize_text(clean_text)
 
         except Exception as e:
-            if self.config.verbose:
-                print(f"   ⚠ Scrapling fetch failed for {url}: {e}")
+            log.debug("Scrapling fetch failed for %s: %s", url, e)
             return ""

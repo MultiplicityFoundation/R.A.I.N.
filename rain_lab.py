@@ -252,6 +252,24 @@ def parse_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
         help="Godot mode: bridge replays existing event log contents on startup.",
     )
     parser.add_argument(
+        "--bridge",
+        action="store_true",
+        default=os.environ.get("RAIN_BRIDGE", "0") == "1",
+        help="Launch the Rust↔Python bridge server as a sidecar (rain_bridge_server.py).",
+    )
+    parser.add_argument(
+        "--bridge-host",
+        type=str,
+        default=os.environ.get("RAIN_BRIDGE_HOST", "127.0.0.1"),
+        help="Bridge server bind address (default: 127.0.0.1).",
+    )
+    parser.add_argument(
+        "--bridge-port",
+        type=int,
+        default=int(os.environ.get("RAIN_BRIDGE_PORT", "7420")),
+        help="Bridge server port (default: 7420).",
+    )
+    parser.add_argument(
         "--no-godot-bridge",
         action="store_true",
         help="Godot mode: do not auto-launch godot_event_bridge.py.",
@@ -680,6 +698,7 @@ def _build_sidecar_specs(
     args: argparse.Namespace,
     launch_plan: LaunchPlan,
     bridge_cmd: list[str] | None,
+    repo_root: Path | None = None,
 ) -> list[SidecarSpec]:
     strict_ui = args.ui == "on"
     specs: list[SidecarSpec] = []
@@ -695,6 +714,22 @@ def _build_sidecar_specs(
                 critical=strict_ui,
             )
         )
+
+    # Rust↔Python bridge server
+    if getattr(args, "bridge", False) and repo_root is not None:
+        bridge_script = repo_root / "rain_bridge_server.py"
+        if bridge_script.exists():
+            specs.append(
+                SidecarSpec(
+                    name="Rust↔Python bridge",
+                    command=[
+                        sys.executable, str(bridge_script),
+                        "--host", getattr(args, "bridge_host", "127.0.0.1"),
+                        "--port", str(getattr(args, "bridge_port", 7420)),
+                    ],
+                    critical=False,
+                )
+            )
 
     return specs
 
@@ -796,7 +831,7 @@ def main(argv: list[str] | None = None) -> int:
     bridge_cmd: list[str] | None = None
     if launch_plan.launch_bridge:
         bridge_cmd = build_godot_bridge_command(effective_args, repo_root)
-    sidecar_specs = _build_sidecar_specs(args, launch_plan, bridge_cmd)
+    sidecar_specs = _build_sidecar_specs(args, launch_plan, bridge_cmd, repo_root=repo_root)
 
     child_env = None
     if args.library:
