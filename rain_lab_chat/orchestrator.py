@@ -862,9 +862,14 @@ class RainLabOrchestrator:
                     system_msg,
                     user_msg,
                     max_retries=1,
+                    log_failures=False,
                 )
             if content is None:
                 if attempt < self.config.max_retries - 1:
+                    if _RICH_UI:
+                        print(f"  {status_indicator('warning')} {agent.name} timed out — retrying...")
+                    else:
+                        print(f"{_YLW}⚠ {agent.name} timed out — retrying...{_RST}")
                     continue
                 return None, None
 

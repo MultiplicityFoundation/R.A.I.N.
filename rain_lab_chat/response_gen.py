@@ -107,6 +107,7 @@ def call_llm_with_retry(
     system_content: str,
     user_content: str,
     max_retries: Optional[int] = None,
+    log_failures: bool = True,
 ) -> Tuple[Optional[str], Optional[str]]:
     """Call the LLM with retry logic.
 
@@ -158,38 +159,46 @@ def call_llm_with_retry(
             return content, finish_reason
 
         except TimeoutError:
-            log.warning("Timeout (attempt %d/%d)", attempt + 1, retries)
+            if log_failures:
+                log.warning("Timeout (attempt %d/%d)", attempt + 1, retries)
             if attempt < retries - 1:
                 time.sleep(2)
             else:
-                log.error("LLM request timed out after %d retries. Check LM Studio.", retries)
+                if log_failures:
+                    log.error("LLM request timed out after %d retries. Check LM Studio.", retries)
                 return None, None
 
         except openai.APITimeoutError:
-            log.warning("API timeout (attempt %d/%d)", attempt + 1, retries)
+            if log_failures:
+                log.warning("API timeout (attempt %d/%d)", attempt + 1, retries)
             if attempt < retries - 1:
                 time.sleep(2)
             else:
-                log.error("LLM API timed out after %d retries.", retries)
+                if log_failures:
+                    log.error("LLM API timed out after %d retries.", retries)
                 return None, None
 
         except openai.APIConnectionError:
-            log.warning("Connection lost (attempt %d/%d)", attempt + 1, retries)
+            if log_failures:
+                log.warning("Connection lost (attempt %d/%d)", attempt + 1, retries)
             if attempt < retries - 1:
                 time.sleep(3)
             else:
-                log.error("Connection failed after %d retries. Is LM Studio running?", retries)
+                if log_failures:
+                    log.error("Connection failed after %d retries. Is LM Studio running?", retries)
                 return None, None
 
         except openai.APIError as e:
-            log.error("API error: %s", e)
+            if log_failures:
+                log.error("API error: %s", e)
             if attempt < retries - 1:
                 time.sleep(2)
             else:
                 return None, None
 
         except Exception as e:
-            log.exception("Unexpected LLM error: %s", e)
+            if log_failures:
+                log.exception("Unexpected LLM error: %s", e)
             return None, None
 
     return None, None
