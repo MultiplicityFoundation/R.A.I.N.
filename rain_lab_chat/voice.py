@@ -1,5 +1,7 @@
 """Voice playback wrapper with robust fallback behavior."""
 
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -119,7 +121,13 @@ class VoiceEngine:
         return self.voice_id_by_character.get(agent_name, self.default_voice_id)
 
     def speak(self, text: str, agent_name: Optional[str] = None):
-        """Speak text synchronously; retry init + fallback when needed."""
+        """Speak text synchronously via a subprocess.
+
+        Each utterance runs in its own Python process so the Windows
+        SAPI5 COM handle is always fresh — this avoids the pyttsx3
+        singleton-cache bug where ``runAndWait()`` silently produces
+        no audio after the first call.
+        """
 
         if not text:
             return
@@ -128,22 +136,28 @@ class VoiceEngine:
             self._speak_with_fallback(text, agent_name)
             return
 
-        # Re-create the engine for every call to avoid the Windows SAPI5 bug
-        # where runAndWait() silently fails on the second invocation.
+        target_voice = self._voice_for_agent(agent_name or "")
+
+        # Build a small self-contained script executed in a child process.
+        script_lines = [
+            "import pyttsx3",
+            "e = pyttsx3.init()",
+        ]
+        if target_voice:
+            script_lines.append(f"e.setProperty('voice', {target_voice!r})")
+        script_lines.append(f"e.say({text!r})")
+        script_lines.append("e.runAndWait()")
+        script_lines.append("e.stop()")
+        script = "\n".join(script_lines)
+
         try:
-            engine = pyttsx3.init()
-            target_voice = self._voice_for_agent(agent_name or "")
-
-            if target_voice:
-                engine.setProperty("voice", target_voice)
-
-            engine.say(text)
-
-            # Blocks until the queue is empty so audio matches text output order
-
-            engine.runAndWait()
-            engine.stop()
-
+            subprocess.run(
+                [sys.executable, "-c", script],
+                timeout=120,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            self._safe_print("Voice subprocess timed out")
         except Exception as e:
             self._safe_print(f"Voice playback failed: {e}")
             self._speak_with_fallback(text, agent_name)
