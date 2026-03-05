@@ -795,6 +795,15 @@ def main(argv: list[str] | None = None) -> int:
 
     _print_banner()
 
+    # Show quick mode overview on first interaction
+    if not args.topic and "-h" not in passthrough and "--help" not in passthrough:
+        print(f"{ANSI_DIM}  Modes:  --mode chat        Multi-agent research meeting (default){ANSI_RESET}")
+        print(f"{ANSI_DIM}          --mode james-chat   1:1 conversation with James via RLM{ANSI_RESET}")
+        print(f"{ANSI_DIM}          --mode godot        Chat + Godot visual avatars{ANSI_RESET}")
+        print(f"{ANSI_DIM}          --mode preflight    Environment health checks{ANSI_RESET}")
+        print(f"{ANSI_DIM}          --mode first-run    Guided onboarding{ANSI_RESET}")
+        print(f"{ANSI_DIM}          Run with --help for all options{ANSI_RESET}")
+
     # Interactive prompt if topic is missing (and not asking for help)
     if args.mode not in {"hello-os", "compile", "preflight", "backup", "first-run", "james-chat"} and not args.topic and "-h" not in passthrough and "--help" not in passthrough:
         print(f"\n{ANSI_YELLOW}Research Topic needed.{ANSI_RESET}")

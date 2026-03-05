@@ -2,6 +2,21 @@ import io
 import os
 import sys
 
+try:
+    from rich_ui import color, print_panel, status_indicator, supports_ansi
+    _RICH = True
+    _ANSI = supports_ansi()
+except ImportError:
+    _RICH = False
+    _ANSI = True
+
+
+def _c(text: str, ansi_code: str) -> str:
+    """Apply ANSI color only when supported."""
+    if _RICH:
+        return text  # rich_ui handles it via color()
+    return f"{ansi_code}{text}\033[0m" if _ANSI else text
+
 
 def sanitize_text(text: str) -> str:
     if not text:
@@ -50,13 +65,24 @@ for path in soul_paths:
     if os.path.exists(path):
         with open(path, "r", encoding="utf-8") as f:
             james_personality = sanitize_text(f.read())
-        print(f"🧬 Soul Loaded from: {path}")
+        if _RICH:
+            print(f"  {status_indicator('ok')} Soul loaded from: {path}")
+        else:
+            print(f"🧬 Soul Loaded from: {path}")
         break
 
-print(f"\n⚡ James is listening. (RLM Mode - Can execute Python code!)")
-print(f"Commands:\n  /list  -> Show available research papers")
-print(f"  /read [name] -> Load a paper into James's memory (e.g., '/read friction')")
-print(f"  quit   -> Exit\n")
+if _RICH:
+    print_panel("JAMES — 1:1 Chat",
+        "RLM Mode — Can execute Python code!\n"
+        "Commands:\n"
+        "  /list         Show available research papers\n"
+        "  /read [name]  Load a paper into James's memory\n"
+        "  quit          Exit")
+else:
+    print(f"\n⚡ James is listening. (RLM Mode - Can execute Python code!)")
+    print(f"Commands:\n  /list  -> Show available research papers")
+    print(f"  /read [name] -> Load a paper into James's memory (e.g., '/read friction')")
+    print(f"  quit   -> Exit\n")
 
 # --- BUILD CONTEXT ---
 # RLM uses a single prompt approach, so we'll build context as a string
@@ -156,7 +182,10 @@ while True:
         # --- NORMAL CHAT WITH RLM ---
         conversation_history.append(("user", user_input))
         
-        print("⚡ James: ", end="", flush=True)
+        if _RICH:
+            print(f"  {color('James:', 'green')} ", end="", flush=True)
+        else:
+            print("⚡ James: ", end="", flush=True)
         
         # Build the full prompt and send to RLM
         full_prompt = build_prompt(user_input)
@@ -165,11 +194,17 @@ while True:
         # Get the response
         response = result.response if hasattr(result, 'response') else str(result)
         
-        print(response)
+        if _RICH:
+            print(f"{color(response, 'green')}")
+        else:
+            print(response)
         
         conversation_history.append(("assistant", response))
         
     except KeyboardInterrupt:
         break
 
-print("\n👋 James signing off.")
+if _RICH:
+    print_panel("Session Ended", "James signing off.")
+else:
+    print("\n👋 James signing off.")

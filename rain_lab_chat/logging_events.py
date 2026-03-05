@@ -67,8 +67,6 @@ class LogManager:
 
             # Move current log to archive
 
-            import shutil
-
             shutil.move(str(self.log_path), str(archive_path))
 
             log.info("Log rotated to: %s (%dKB)", archive_path.name, archive_path.stat().st_size // 1024)
@@ -156,6 +154,44 @@ SESSION ENDED
 
         except Exception as e:
             log.warning("Logging error: %s", e)
+
+
+def parse_log_for_resume(log_path: str) -> dict:
+    """Parse an existing meeting log to extract topic and conversation history.
+
+    Returns a dict with keys 'topic', 'history' (list of "Speaker: text" strings),
+    and 'turn_count' (int).  Returns empty dict on failure.
+    """
+    import re
+
+    path = Path(log_path)
+    if not path.exists():
+        return {}
+
+    try:
+        text = path.read_text(encoding="utf-8")
+    except Exception:
+        return {}
+
+    # Extract topic
+    topic_match = re.search(r"TOPIC:\s*(.+)", text)
+    topic = topic_match.group(1).strip() if topic_match else ""
+
+    # Extract statements:  **AgentName:** content
+    history: list[str] = []
+    for m in re.finditer(r"\*\*(\w+):\*\*\s*(.+?)(?=\n\n|\n\*\*|\n={5,}|\Z)", text, re.DOTALL):
+        speaker = m.group(1).strip()
+        content = m.group(2).strip()
+        # Skip system / session-end markers
+        if speaker.upper() in ("SESSION", "SYSTEM"):
+            continue
+        history.append(f"{speaker}: {content}")
+
+    return {
+        "topic": topic,
+        "history": history,
+        "turn_count": len(history),
+    }
 
 
 class VisualEventLogger:

@@ -13,18 +13,37 @@ from urllib.parse import urlparse, urlunparse
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
-# ANSI color codes
-GREEN = "\033[92m"
-YELLOW = "\033[93m"
-RED = "\033[91m"
-BLUE = "\033[94m"
-RESET = "\033[0m"
-BOLD = "\033[1m"
+try:
+    from rich_ui import (
+        print_panel as _rich_panel,
+    )
+    from rich_ui import (
+        supports_ansi as _supports_ansi,
+    )
+    _ANSI = _supports_ansi()
+    _RICH = True
+except ImportError:
+    _ANSI = True
+    _RICH = False
+
+def _c(code: str) -> str:
+    return code if _ANSI else ""
+
+# ANSI color codes (auto-disabled on non-ANSI terminals)
+GREEN = _c("\033[92m")
+YELLOW = _c("\033[93m")
+RED = _c("\033[91m")
+BLUE = _c("\033[94m")
+RESET = _c("\033[0m")
+BOLD = _c("\033[1m")
 
 def print_header(text):
-    print(f"\n{BOLD}{BLUE}{'='*70}{RESET}")
-    print(f"{BOLD}{BLUE}{text.center(70)}{RESET}")
-    print(f"{BOLD}{BLUE}{'='*70}{RESET}\n")
+    if _RICH:
+        _rich_panel(text, "")
+    else:
+        print(f"\n{BOLD}{BLUE}{'='*70}{RESET}")
+        print(f"{BOLD}{BLUE}{text.center(70)}{RESET}")
+        print(f"{BOLD}{BLUE}{'='*70}{RESET}\n")
 
 def print_success(text):
     print(f"{GREEN}✓ {text}{RESET}")

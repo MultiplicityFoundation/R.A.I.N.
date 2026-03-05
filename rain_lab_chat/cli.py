@@ -5,6 +5,7 @@ import os
 import sys
 
 from rain_lab_chat.config import DEFAULT_LIBRARY_PATH, DEFAULT_MODEL_NAME, DEFAULT_RECURSIVE_LIBRARY_SCAN, Config
+from rain_lab_chat.logging_events import parse_log_for_resume
 from rain_lab_chat.orchestrator import RainLabOrchestrator
 
 
@@ -119,6 +120,14 @@ Examples:
         help="Disable per-turn TTS file export (keeps spoken audio behavior unchanged)",
     )
 
+    parser.add_argument(
+        "--resume",
+        type=str,
+        default=None,
+        metavar="LOG_PATH",
+        help="Resume a previous meeting from its log file (topic and history are restored)",
+    )
+
     args, unknown = parser.parse_known_args()
 
     if unknown:
@@ -179,29 +188,41 @@ def main():
         tts_audio_dir=args.tts_audio_dir,
     )
 
-    # Get topic
+    # Handle resume mode
 
-    if args.topic:
-        topic = args.topic
-
+    prior_history = None
+    if args.resume:
+        resume_data = parse_log_for_resume(args.resume)
+        if not resume_data or not resume_data.get("topic"):
+            print(f"❌ Could not parse log for resume: {args.resume}")
+            sys.exit(1)
+        topic = resume_data["topic"]
+        prior_history = resume_data["history"]
+        print(f"🔄 Resuming topic: {topic}  ({len(prior_history)} prior turns loaded)")
     else:
-        print("\n" + "=" * 70)
+        # Get topic
 
-        print("R.A.I.N. LAB - RESEARCH FOCUS")
+        if args.topic:
+            topic = args.topic
 
-        print("=" * 70)
+        else:
+            print("\n" + "=" * 70)
 
-        topic = input("\n🔬 Research Topic: ").strip()
+            print("R.A.I.N. LAB - RESEARCH FOCUS")
 
-    if not topic:
-        topic = "Open research discussion"
-        print(f"💡 No topic specified — defaulting to: {topic}")
+            print("=" * 70)
+
+            topic = input("\n🔬 Research Topic: ").strip()
+
+        if not topic:
+            topic = "Open research discussion"
+            print(f"💡 No topic specified — defaulting to: {topic}")
 
     # Run meeting
 
     orchestrator = RainLabOrchestrator(config)
 
-    orchestrator.run_meeting(topic)
+    orchestrator.run_meeting(topic, prior_history=prior_history)
 
 
 if __name__ == "__main__":

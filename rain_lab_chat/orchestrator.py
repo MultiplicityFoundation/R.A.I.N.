@@ -66,16 +66,14 @@ from rain_lab_chat.web_search import DDG_AVAILABLE, WebSearchManager
 
 try:
     from rich_ui import (
+        AGENT_COLORS,
         agent_banner,
         color,
         meeting_header,
         print_panel,
         print_progress,
         status_indicator,
-        strip_ansi,
         supports_ansi,
-        AGENT_COLORS,
-        COLORS,
     )
     _RICH_UI = True
     _ANSI_OK = supports_ansi()
@@ -87,6 +85,25 @@ except ImportError:
 def _a(code: str) -> str:
     """Return *code* only when ANSI is supported; empty string otherwise."""
     return code if _ANSI_OK else ""
+
+
+# Map symbolic color names → ANSI codes (bright variants for readability)
+_COLOR_MAP = {
+    "green": "\033[92m",
+    "yellow": "\033[93m",
+    "cyan": "\033[96m",
+    "magenta": "\033[95m",
+    "red": "\033[91m",
+    "blue": "\033[94m",
+    "white": "\033[97m",
+}
+
+
+def _resolve_color(name: str) -> str:
+    """Resolve a symbolic color name (or raw ANSI code) to a safe ANSI string."""
+    if name.startswith("\033["):
+        return _a(name)  # legacy raw code
+    return _a(_COLOR_MAP.get(name, ""))
 
 
 # Commonly used ANSI shortcuts (empty when unsupported)
@@ -343,8 +360,9 @@ class RainLabOrchestrator:
                 idx += 1
                 self._stop.wait(0.15)
 
-    def run_meeting(self, topic: str):
-        """Run the research meeting"""
+    def run_meeting(self, topic: str, prior_history: Optional[List[str]] = None):
+        """Run the research meeting.  If *prior_history* is provided, the
+        conversation resumes with those turns already in context."""
 
         # UTF-8 setup
 
@@ -502,22 +520,27 @@ class RainLabOrchestrator:
             print("=" * 70 + "\n")
 
         kickoff_agent = next((member for member in self.team if member.name == "James"), self.team[0])
-        kickoff_greeting = f"Hey team, let's talk about {topic}."
-        if _RICH_UI:
-            print(agent_banner(kickoff_agent.name, kickoff_agent.role))
-            print(f"  {kickoff_greeting}\n")
+
+        if prior_history:
+            # Resuming — pre-seed history and skip the kickoff greeting
+            history_log = list(prior_history)
+            turn_count = len(prior_history)
+            print(f"{_DIM}  Resumed with {len(prior_history)} prior turns in context.{_RST}\n")
         else:
-            print(f"\n{_a(kickoff_agent.color)}{'─' * 70}")
-            print(f"{kickoff_agent.name}: {kickoff_greeting}")
-            print(f"{'─' * 70}{_RST}")
-        self.voice_engine.speak(kickoff_greeting, agent_name=kickoff_agent.name)
-        history_log = [f"{kickoff_agent.name}: {kickoff_greeting}"]
+            kickoff_greeting = f"Hey team, let's talk about {topic}."
+            if _RICH_UI:
+                print(agent_banner(kickoff_agent.name, kickoff_agent.role))
+                print(f"  {kickoff_greeting}\n")
+            else:
+                print(f"\n{_resolve_color(kickoff_agent.color)}{'─' * 70}")
+                print(f"{kickoff_agent.name}: {kickoff_greeting}")
+                print(f"{'─' * 70}{_RST}")
+            self.voice_engine.speak(kickoff_greeting, agent_name=kickoff_agent.name)
+            history_log = [f"{kickoff_agent.name}: {kickoff_greeting}"]
 
         # Track wrap-up phase
 
         in_wrap_up = False
-
-        wrap_up_complete = False
 
         # --- AUTONOMOUS LOOP WITH MANUAL INTERVENTION ---
 
@@ -525,6 +548,66 @@ class RainLabOrchestrator:
 
         wrap_up_start_turn = max(0, effective_max_turns - self.config.wrap_up_turns)
 
+        try:
+          self._run_meeting_loop(
+              effective_max_turns, wrap_up_start_turn, history_log, topic, verbose,
+              in_wrap_up, turn_count,
+          )
+        except KeyboardInterrupt:
+            # Reset terminal line, save progress, exit cleanly
+            print(f"\r{' ' * 60}\r", end="", flush=True)
+            print(f"\n{_RST}{_YLW}⚠ Meeting interrupted by Ctrl+C.{_RST}")
+            print(f"{_DIM}  Saving session log...{_RST}")
+            self.log_manager.log_statement("SYSTEM", "Meeting interrupted by user (Ctrl+C).")
+            if self.metrics_tracker is not None:
+                self.metrics_tracker.finalize()
+            self.log_manager.finalize_log(self._generate_final_stats())
+            self._end_visual_conversation()
+            print(f"  ✅ Session saved to: {self.log_manager.log_path}\n")
+            return
+
+        # Meeting officially closed
+
+        if _RICH_UI:
+            print_panel("MEETING ADJOURNED", "Great discussion today! Let's reconvene soon.")
+        else:
+            print("\n" + "=" * 70)
+            print("👋 MEETING ADJOURNED")
+            print("=" * 70)
+            print(f"\n{_GRN}James: Alright team, great discussion today! Let's reconvene soon.{_RST}")
+
+        self.log_manager.log_statement("James", "Meeting adjourned. Great discussion everyone!")
+
+        # Finalize
+
+        if self.metrics_tracker is not None:
+            self.metrics_tracker.finalize()
+
+        stats = self._generate_final_stats()
+
+        self.log_manager.finalize_log(stats)
+        self._end_visual_conversation()
+
+        if _RICH_UI:
+            print_panel("SESSION STATISTICS", stats)
+        else:
+            print(f"\n{_CYN}{'=' * 70}{_RST}")
+            print(f"{_CYN}{stats}{_RST}")
+            print(f"{_CYN}{'=' * 70}{_RST}")
+
+        print(f"\n{_GRN}✅ Session saved to: {self.log_manager.log_path}{_RST}\n")
+
+    def _run_meeting_loop(
+        self,
+        effective_max_turns: int,
+        wrap_up_start_turn: int,
+        history_log: List[str],
+        topic: str,
+        verbose: bool,
+        in_wrap_up: bool,
+        turn_count: int,
+    ):
+        """Inner meeting loop, separated so KeyboardInterrupt can be caught cleanly."""
         while turn_count < effective_max_turns:
             external_message = self.diplomat.check_inbox()
 
@@ -554,7 +637,7 @@ class RainLabOrchestrator:
                 print_progress(turn_count, effective_max_turns, prefix="Meeting")
                 print(agent_banner(current_agent.name, current_agent.role))
             else:
-                print(f"\n{_a(current_agent.color)}▶ {current_agent.name}'s turn ({current_agent.role}){_RST}")
+                print(f"\n{_resolve_color(current_agent.color)}▶ {current_agent.name}'s turn ({current_agent.role}){_RST}")
 
             print(f"{_DIM}   [Press ENTER to speak, or wait...]{_RST}", end="", flush=True)
 
@@ -660,7 +743,7 @@ class RainLabOrchestrator:
                 agent_color_name = AGENT_COLORS.get(current_agent.name, "white")
                 print(f"\n  {color(current_agent.name + ':', agent_color_name)} {clean_response}\n")
             else:
-                print(f"\n{_a(current_agent.color)}{'─' * 70}")
+                print(f"\n{_resolve_color(current_agent.color)}{'─' * 70}")
                 print(f"{current_agent.name}: {clean_response}")
                 print(f"{'─' * 70}{_RST}")
 
@@ -737,36 +820,6 @@ class RainLabOrchestrator:
 
             turn_count += 1
 
-        # Meeting officially closed
-
-        if _RICH_UI:
-            print_panel("MEETING ADJOURNED", "Great discussion today! Let's reconvene soon.")
-        else:
-            print("\n" + "=" * 70)
-            print("👋 MEETING ADJOURNED")
-            print("=" * 70)
-            print(f"\n{_GRN}James: Alright team, great discussion today! Let's reconvene soon.{_RST}")
-
-        self.log_manager.log_statement("James", "Meeting adjourned. Great discussion everyone!")
-
-        # Finalize
-
-        if self.metrics_tracker is not None:
-            self.metrics_tracker.finalize()
-
-        stats = self._generate_final_stats()
-
-        self.log_manager.finalize_log(stats)
-        self._end_visual_conversation()
-
-        print("\n" + "=" * 70)
-
-        print(stats)
-
-        print("=" * 70)
-
-        print(f"\n✅ Session saved to: {self.log_manager.log_path}\n")
-
     def _generate_agent_response(
         self,
         agent: Agent,
@@ -802,7 +855,7 @@ class RainLabOrchestrator:
 
         # Call LLM with retry
         for attempt in range(self.config.max_retries):
-            with self._LiveSpinner(f"{agent.name} is thinking", color=_a(agent.color)):
+            with self._LiveSpinner(f"{agent.name} is thinking", color=_resolve_color(agent.color)):
                 content, finish_reason = call_llm_with_retry(
                     self.client,
                     self.config,

@@ -7,6 +7,26 @@ import subprocess
 import sys
 from pathlib import Path
 
+try:
+    from rich_ui import print_panel, supports_ansi
+    _RICH = True
+    _ANSI = supports_ansi()
+except ImportError:
+    _RICH = False
+    _ANSI = True
+
+
+def _dim(text: str) -> str:
+    if _ANSI:
+        return f"\033[90m{text}\033[0m"
+    return text
+
+
+def _green(text: str) -> str:
+    if _ANSI:
+        return f"\033[92m{text}\033[0m"
+    return text
+
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Guided first-run onboarding for R.A.I.N. Lab.")
@@ -62,25 +82,37 @@ def _check_godot(repo_root: Path) -> bool:
 
 
 def _print_next_steps(topic: str, godot_available: bool) -> None:
-    print("\n[first-run] Next steps")
     if godot_available:
-        print(f"  1. python rain_lab.py --mode chat --ui auto --topic \"{topic}\"")
+        step1 = f"python rain_lab.py --mode chat --ui auto --topic \"{topic}\""
+        extra = ""
     else:
-        print(f"  1. python rain_lab.py --mode chat --topic \"{topic}\"")
-        print("     (optional: run 'python godot_setup.py' first for visual avatars)")
-    print("  2. python rain_lab.py --mode backup")
-    print("  3. Review docs/TROUBLESHOOTING.md if you hit runtime issues")
+        step1 = f"python rain_lab.py --mode chat --topic \"{topic}\""
+        extra = "  (optional: run 'python godot_setup.py' first for visual avatars)\n"
+    steps = (
+        f"  1. {step1}\n"
+        f"{extra}"
+        f"  2. python rain_lab.py --mode backup\n"
+        f"  3. Review docs/TROUBLESHOOTING.md if you hit runtime issues"
+    )
+    if _RICH:
+        print_panel("Next Steps", steps)
+    else:
+        print("\n[first-run] Next steps")
+        print(steps)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     repo_root = Path(__file__).resolve().parent
 
-    print("[first-run] Running preflight checks...")
+    if _RICH:
+        print_panel("First-Run Onboarding", "Checking your environment...")
+    else:
+        print("[first-run] Running preflight checks...")
     result = _run_preflight(repo_root)
 
     if result.returncode == 0:
-        print("[first-run] Preflight passed.")
+        print(_green("[first-run] Preflight passed."))
         godot_ok = _check_godot(repo_root)
         _print_next_steps(args.topic, godot_ok)
         return 0

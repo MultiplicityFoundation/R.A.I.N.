@@ -10,6 +10,14 @@ from rain_lab_chat._logging import get_logger
 log = get_logger(__name__)
 
 try:
+    from rich_ui import status_indicator, supports_ansi
+    _RICH_UI = True
+    _ANSI_OK = supports_ansi()
+except ImportError:
+    _RICH_UI = False
+    _ANSI_OK = True
+
+try:
     import pyttsx3 as _pyttsx3
 except (ImportError, OSError) as _exc:
     log.debug("pyttsx3 unavailable: %s", _exc)
@@ -41,9 +49,23 @@ class VoiceEngine:
 
         self._try_init_engine()
 
+    _user_warned: bool = False  # class-level: only show one terminal warning
+
     def _safe_print(self, message: str) -> None:
-        """Log warnings without crashing on non-UTF-8 terminals."""
+        """Log warnings and surface the first failure visibly to the user."""
         log.warning("%s", message)
+        if not VoiceEngine._user_warned:
+            VoiceEngine._user_warned = True
+            try:
+                if _RICH_UI:
+                    indicator = status_indicator("warning")
+                    print(f"  {indicator} Voice: {message}", file=sys.stderr)
+                elif _ANSI_OK:
+                    print(f"\033[93m⚠ Voice: {message}\033[0m", file=sys.stderr)
+                else:
+                    print(f"Warning — Voice: {message}", file=sys.stderr)
+            except Exception:
+                pass  # never crash on warning output
 
     def _init_fallback_backend(self) -> None:
         """Initialize optional fallback TTS backend from tts_module."""
