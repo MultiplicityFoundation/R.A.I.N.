@@ -4,6 +4,13 @@
   <img src="assets/rain_lab_logo.png" alt="R.A.I.N. Lab logo" width="900" />
 </p>
 
+A lightweight framework for building modular AI systems,
+experimental agent architectures, and research prototypes.
+
+This is designed for researchers, builders, and experimental
+AI developers who want a simple architecture for composing
+agents, modules, and tools without heavyweight frameworks.
+
 ## Autonomous Acoustic Physics and Resonance Research Platform
 
 <p align="center">
