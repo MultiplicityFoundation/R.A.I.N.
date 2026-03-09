@@ -274,4 +274,4 @@ MIT License. See [LICENSE](LICENSE).
 
 ## Acknowledgement 
 
-The R.A.I.N. Lab is proudly built on the foundation of ZeroClaw. Huge thanks to their team for creating such a high-performance, lightweight agent runtime that made this Vers3Dynamics lab possible.
+The R.A.I.N. Lab is proudly built on the foundation of ZeroClaw and MIT CSAIL. Huge thanks to both teams for creating such a high-performance, lightweight agent runtime that made this Vers3Dynamics lab possible.
