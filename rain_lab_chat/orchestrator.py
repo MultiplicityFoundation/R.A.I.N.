@@ -55,7 +55,7 @@ from rain_lab_chat.guardrails import (
     is_corrupted_response,
     strip_agent_prefix,
 )
-from rain_lab_chat.logging_events import CheckpointManager, Diplomat, LogManager, VisualEventLogger
+from rain_lab_chat.logging_events import CheckpointManager, Diplomat, LogManager, SessionRunLedger, VisualEventLogger
 from rain_lab_chat.response_gen import (
     build_user_message,
     call_llm_with_retry,
@@ -135,12 +135,19 @@ class RainLabOrchestrator:
 
         self.log_manager = LogManager(config)
         self.checkpoint_manager = CheckpointManager(config)
+        self.session_run_ledger = SessionRunLedger(config)
 
         # Will be initialized after context loading
 
         self.director = None
 
         self.citation_analyzer = None
+        self.metrics_tracker = None
+        self.session_run_id: Optional[str] = None
+        self.session_started_at: Optional[str] = None
+        self.session_resumed = False
+        self.session_resume_source: Optional[str] = None
+        self.last_connection_diagnostics: Optional[Dict] = None
 
         self.web_search_manager = WebSearchManager(config)
 
@@ -283,6 +290,85 @@ class RainLabOrchestrator:
                 critique_pairs.append((str(pair[0]), str(pair[1])))
         self.metrics_tracker._critique_pairs = critique_pairs
 
+    def _current_citation_counts(self) -> Dict:
+
+        return {agent.name: agent.citations_made for agent in self.team}
+
+    def _capture_doctor_snapshot(self, include_completion_probe: bool = False) -> Dict:
+
+        timeout_s = min(max(2.0, self.config.timeout), 10.0)
+
+        try:
+            return collect_lm_studio_diagnostics(
+                self.config.base_url,
+                self.config.model_name,
+                api_key=self.config.api_key,
+                timeout_s=timeout_s,
+                include_completion_probe=include_completion_probe,
+            )
+
+        except Exception as e:
+            return {
+                "ok": False,
+                "base_url": self.config.base_url,
+                "configured_model": self.config.model_name,
+                "timeout_s": timeout_s,
+                "endpoint": {},
+                "probe": {},
+                "actions": [f"Doctor snapshot failed: {e}"],
+                "error": str(e),
+            }
+
+    def _append_session_run_record(
+        self,
+        topic: str,
+        history_log: List[str],
+        turn_count: int,
+        paper_list: List[str],
+        status: str,
+        stage: str,
+        doctor_snapshot: Optional[Dict] = None,
+        error: Optional[str] = None,
+    ):
+
+        try:
+            resolved_turn_count = int(turn_count)
+
+        except (TypeError, ValueError):
+            resolved_turn_count = len(history_log)
+
+        payload = {
+            "version": 1,
+            "kind": "rain_lab_session_run",
+            "run_id": self.session_run_id,
+            "started_at": self.session_started_at,
+            "status": status,
+            "stage": stage,
+            "topic": topic,
+            "turn_count": max(0, resolved_turn_count),
+            "history_count": len(history_log),
+            "history_tail": list(history_log[-3:]),
+            "paper_count": len(paper_list),
+            "resumed": self.session_resumed,
+            "resume_source": self.session_resume_source,
+            "model_name": self.config.model_name,
+            "base_url": self.config.base_url,
+            "timeout": self.config.timeout,
+            "checkpoint_path": self.checkpoint_manager.path.absolute().as_posix(),
+            "meeting_log_path": self.log_manager.log_path.absolute().as_posix(),
+            "session_runs_path": self.session_run_ledger.path.absolute().as_posix(),
+            "citation_counts": self._current_citation_counts(),
+            "visual_conversation_id": self.visual_conversation_id,
+        }
+
+        if doctor_snapshot is not None:
+            payload["doctor_snapshot"] = doctor_snapshot
+
+        if error:
+            payload["error"] = error
+
+        self.session_run_ledger.append(payload)
+
     def _save_session_checkpoint(
         self,
         topic: str,
@@ -290,20 +376,26 @@ class RainLabOrchestrator:
         turn_count: int,
         paper_list: List[str],
         status: str,
+        doctor_snapshot: Optional[Dict] = None,
+        error: Optional[str] = None,
     ):
+
+        loaded_papers = getattr(self.context_manager, "loaded_papers", {})
 
         payload = {
             "version": 1,
             "kind": "rain_lab_checkpoint",
             "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "run_id": self.session_run_id,
+            "started_at": self.session_started_at,
             "status": status,
             "topic": topic,
             "turn_count": max(0, int(turn_count)),
             "history": list(history_log),
             "paper_count": len(paper_list),
             "paper_list": list(paper_list),
-            "loaded_papers": sorted(self.context_manager.loaded_papers.keys()),
-            "citation_counts": {agent.name: agent.citations_made for agent in self.team},
+            "loaded_papers": sorted(loaded_papers.keys()),
+            "citation_counts": self._current_citation_counts(),
             "metrics_state": self._metrics_checkpoint_state(),
             "config": {
                 "model_name": self.config.model_name,
@@ -316,7 +408,16 @@ class RainLabOrchestrator:
                 "enable_web_search": self.config.enable_web_search,
             },
             "visual_conversation_id": self.visual_conversation_id,
+            "session_runs_path": self.session_run_ledger.path.absolute().as_posix(),
+            "meeting_log_path": self.log_manager.log_path.absolute().as_posix(),
+            "resume_source": self.session_resume_source,
         }
+
+        if doctor_snapshot is not None:
+            payload["doctor_snapshot"] = doctor_snapshot
+
+        if error:
+            payload["error"] = error
 
         self.checkpoint_manager.save(payload)
 
@@ -349,6 +450,8 @@ class RainLabOrchestrator:
         print(f"{_DIM}   Model: {self.config.model_name}{_RST}")
         print(f"{_DIM}   Timeout: {self.config.timeout:.0f}s | Retries: 3{_RST}")
 
+        self.last_connection_diagnostics = None
+
         last_error = ""
         saw_timeout = False
 
@@ -359,6 +462,7 @@ class RainLabOrchestrator:
                 )
 
                 print("   ✓ Connection successful!\n")
+                self.last_connection_diagnostics = None
 
                 return True
 
@@ -383,6 +487,7 @@ class RainLabOrchestrator:
             timeout_s=min(max(2.0, self.config.timeout), 10.0),
             include_completion_probe=False,
         )
+        self.last_connection_diagnostics = diagnostics
         endpoint = diagnostics["endpoint"]
         print("\n💡 Diagnostics:")
         if endpoint.get("latency_ms") is not None:
@@ -500,13 +605,29 @@ class RainLabOrchestrator:
             if isinstance(restored_history, list):
                 prior_history = [str(item) for item in restored_history if str(item).strip()]
 
-        # UTF-8 setup
+        self.session_run_id = f"run_{uuid.uuid4().hex[:12]}"
+        self.session_started_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        self.session_resumed = bool(resume_state)
+        self.session_resume_source = None
+        if isinstance(resume_state, dict):
+            raw_resume_source = str(resume_state.get("source", "")).strip()
+            if raw_resume_source:
+                self.session_resume_source = raw_resume_source
+        self.last_connection_diagnostics = None
+
+        history_log = list(prior_history or [])
+        paper_list: List[str] = []
+        turn_count = 0
+        log_initialized = False
+        session_state = {"turn_count": turn_count}
+
+        self._append_session_run_record(topic, history_log, turn_count, paper_list, "starting", "startup")
 
         if sys.stdout.encoding != "utf-8":
             try:
                 sys.stdout.reconfigure(encoding="utf-8")
 
-            except Exception:  # Some runtimes lack reconfigure()
+            except Exception:
                 pass
 
         # Header
@@ -527,6 +648,33 @@ class RainLabOrchestrator:
         # Test connection
 
         if not self.test_connection():
+            doctor_snapshot = self.last_connection_diagnostics or self._capture_doctor_snapshot(
+                include_completion_probe=False
+            )
+            error_text = (
+                doctor_snapshot.get("endpoint", {}).get("error")
+                or doctor_snapshot.get("error")
+                or "LM Studio connection test failed."
+            )
+            self._save_session_checkpoint(
+                topic,
+                history_log,
+                turn_count,
+                paper_list,
+                "connection_failed",
+                doctor_snapshot=doctor_snapshot,
+                error=error_text,
+            )
+            self._append_session_run_record(
+                topic,
+                history_log,
+                turn_count,
+                paper_list,
+                "connection_failed",
+                "startup",
+                doctor_snapshot=doctor_snapshot,
+                error=error_text,
+            )
             return
 
         # Load context
@@ -552,7 +700,17 @@ class RainLabOrchestrator:
 
         if not paper_list:
             print("\n❌ No papers found. Cannot proceed.")
-
+            error_text = "No papers found in research library."
+            self._save_session_checkpoint(topic, history_log, turn_count, paper_list, "no_papers", error=error_text)
+            self._append_session_run_record(
+                topic,
+                history_log,
+                turn_count,
+                paper_list,
+                "no_papers",
+                "startup",
+                error=error_text,
+            )
             return
 
         # Initialize components that need context
@@ -640,11 +798,11 @@ class RainLabOrchestrator:
         # Initialize log
 
         self.log_manager.initialize_log(topic, len(paper_list))
+        log_initialized = True
         self._start_visual_conversation(topic)
 
         # Meeting setup
 
-        turn_count = 0
         effective_max_turns = max(self.config.max_turns, len(self.team))
         if effective_max_turns != self.config.max_turns:
             print(
@@ -691,6 +849,7 @@ class RainLabOrchestrator:
             history_log = [f"{kickoff_agent.name}: {kickoff_greeting}"]
 
         self._save_session_checkpoint(topic, history_log, turn_count, paper_list, "running")
+        self._append_session_run_record(topic, history_log, turn_count, paper_list, "running", "meeting")
 
         # Track wrap-up phase
 
@@ -701,7 +860,7 @@ class RainLabOrchestrator:
         # Calculate when wrap-up should start
 
         wrap_up_start_turn = max(0, effective_max_turns - self.config.wrap_up_turns)
-        session_state = {"turn_count": turn_count}
+        session_state["turn_count"] = turn_count
 
         try:
             stopped_early = self._run_meeting_loop(
@@ -717,17 +876,73 @@ class RainLabOrchestrator:
             )
         except KeyboardInterrupt:
             turn_count = int(session_state.get("turn_count", turn_count))
+            doctor_snapshot = self._capture_doctor_snapshot(include_completion_probe=False)
+            error_text = "Meeting interrupted by user (Ctrl+C)."
             print(f"\r{' ' * 60}\r", end="", flush=True)
             print(f"\n{_RST}{_YLW}⚠ Meeting interrupted by Ctrl+C.{_RST}")
             print(f"{_DIM}  Saving session log...{_RST}")
-            self.log_manager.log_statement("SYSTEM", "Meeting interrupted by user (Ctrl+C).")
-            self._save_session_checkpoint(topic, history_log, turn_count, paper_list, "interrupted")
+            if log_initialized:
+                self.log_manager.log_statement("SYSTEM", error_text)
+            self._save_session_checkpoint(
+                topic,
+                history_log,
+                turn_count,
+                paper_list,
+                "interrupted",
+                doctor_snapshot=doctor_snapshot,
+                error=error_text,
+            )
             if self.metrics_tracker is not None:
                 self.metrics_tracker.finalize()
-            self.log_manager.finalize_log(self._generate_final_stats())
+            if log_initialized:
+                self.log_manager.finalize_log(self._generate_final_stats())
+            self._append_session_run_record(
+                topic,
+                history_log,
+                turn_count,
+                paper_list,
+                "interrupted",
+                "meeting",
+                doctor_snapshot=doctor_snapshot,
+                error=error_text,
+            )
             self._end_visual_conversation()
-            print(f"  ✅ Session saved to: {self.log_manager.log_path}\n")
+            if log_initialized:
+                print(f"  ✅ Session saved to: {self.log_manager.log_path}\n")
+            else:
+                print(f"  ✅ Session checkpoint saved to: {self.checkpoint_manager.path}\n")
             return
+        except Exception as e:
+            turn_count = int(session_state.get("turn_count", turn_count))
+            doctor_snapshot = self._capture_doctor_snapshot(include_completion_probe=False)
+            error_text = str(e)
+            if log_initialized:
+                self.log_manager.log_statement("SYSTEM", f"Meeting failed: {error_text}")
+            self._save_session_checkpoint(
+                topic,
+                history_log,
+                turn_count,
+                paper_list,
+                "failed",
+                doctor_snapshot=doctor_snapshot,
+                error=error_text,
+            )
+            if self.metrics_tracker is not None:
+                self.metrics_tracker.finalize()
+            if log_initialized:
+                self.log_manager.finalize_log(self._generate_final_stats())
+            self._append_session_run_record(
+                topic,
+                history_log,
+                turn_count,
+                paper_list,
+                "failed",
+                "meeting",
+                doctor_snapshot=doctor_snapshot,
+                error=error_text,
+            )
+            self._end_visual_conversation()
+            raise
 
         turn_count = int(session_state.get("turn_count", turn_count))
         if stopped_early:
@@ -735,11 +950,10 @@ class RainLabOrchestrator:
             if self.metrics_tracker is not None:
                 self.metrics_tracker.finalize()
             self.log_manager.finalize_log(self._generate_final_stats())
+            self._append_session_run_record(topic, history_log, turn_count, paper_list, "stopped", "meeting")
             self._end_visual_conversation()
             print(f"\n{_GRN}✅ Session saved to: {self.log_manager.log_path}{_RST}\n")
             return
-
-        # Meeting officially closed
 
         if _RICH_UI:
             print_panel("MEETING ADJOURNED", "Great discussion today! Let's reconvene soon.")
@@ -760,6 +974,7 @@ class RainLabOrchestrator:
 
         self.log_manager.finalize_log(stats)
         self._save_session_checkpoint(topic, history_log, turn_count, paper_list, "completed")
+        self._append_session_run_record(topic, history_log, turn_count, paper_list, "completed", "shutdown")
         self._end_visual_conversation()
 
         if _RICH_UI:
@@ -783,7 +998,6 @@ class RainLabOrchestrator:
         paper_list: List[str],
         session_state: Dict,
     ) -> bool:
-        """Inner meeting loop, separated so KeyboardInterrupt can be caught cleanly."""
         while turn_count < effective_max_turns:
             external_message = self.diplomat.check_inbox()
 
@@ -792,8 +1006,6 @@ class RainLabOrchestrator:
 
                 history_log.append(external_message)
                 self._save_session_checkpoint(topic, history_log, turn_count, paper_list, "running")
-
-            # Check if we should enter wrap-up phase
 
             if not in_wrap_up and turn_count >= wrap_up_start_turn:
                 in_wrap_up = True
@@ -806,8 +1018,6 @@ class RainLabOrchestrator:
 
             current_agent = self.team[turn_count % len(self.team)]
 
-            # Check for user intervention with Windows-compatible key detection
-
             user_wants_to_speak = False
 
             if _RICH_UI:
@@ -818,21 +1028,19 @@ class RainLabOrchestrator:
 
             print(f"{_DIM}   [Press ENTER to speak, or wait...]{_RST}", end="", flush=True)
 
-            # Cross-platform: check for keypress during brief window
-
-            intervention_window = 0.0 if turn_count == 0 else 2.5  # seconds to wait for user input
+            intervention_window = 0.0 if turn_count == 0 else 2.5
 
             start_time = time.time()
 
             while time.time() - start_time < intervention_window:
-                if msvcrt and msvcrt.kbhit():  # Windows
+                if msvcrt and msvcrt.kbhit():
                     key = msvcrt.getch()
 
                     user_wants_to_speak = True
 
                     break
 
-                elif sys.platform != "win32":  # Unix/Linux/Mac
+                elif sys.platform != "win32":
                     try:
                         r, _, _ = select.select([sys.stdin], [], [], 0)
 
@@ -846,11 +1054,9 @@ class RainLabOrchestrator:
                     except Exception:
                         pass
 
-                time.sleep(0.05)  # Small sleep to prevent CPU spinning
+                time.sleep(0.05)
 
-            print("\r" + " " * 50 + "\r", end="")  # Clear the "Press ENTER" prompt
-
-            # Handle user intervention
+            print("\r" + " " * 50 + "\r", end="")
 
             if user_wants_to_speak:
                 print(f"\n{_WHT}🎤 FOUNDER INTERVENTION (type 'done' to resume, 'quit' to end):{_RST}")
@@ -882,8 +1088,6 @@ class RainLabOrchestrator:
 
                         break
 
-            # 2. Generate Response
-
             response, metadata = self._generate_agent_response(
                 current_agent, self.full_context, history_log, turn_count, topic, is_wrap_up=in_wrap_up
             )
@@ -898,16 +1102,12 @@ class RainLabOrchestrator:
                 )
                 metadata = {"timeout_fallback": True}
 
-            # 3. Analyze Citations
-
             if self.config.enable_citation_tracking:
                 citation_analysis = self.citation_analyzer.analyze_response(current_agent.name, response)
 
                 metadata = citation_analysis
 
                 current_agent.citations_made += len(citation_analysis["verified"])
-
-            # 4. Output - Clean up any duplicate name prefixes from the response
 
             clean_response = self._strip_agent_prefix(response, current_agent.name)
 
@@ -968,24 +1168,18 @@ class RainLabOrchestrator:
                     if web_results:
                         self.full_context += f"\n\n### LIVE WEB SEARCH\nQuery: {query}\n{web_note}"
 
-            # Show citation feedback
-
             if metadata and metadata.get("verified"):
                 if _RICH_UI:
                     print(f"  {status_indicator('ok')} {len(metadata['verified'])} citation(s) verified")
                 else:
                     print(f"{_DIM}   ✓ {len(metadata['verified'])} citation(s) verified{_RST}")
 
-                for quote, source in metadata["verified"][:1]:  # Show first citation
+                for quote, source in metadata["verified"][:1]:
                     print(f'{_DIM}      • "{quote[:60]}..." [from {source}]{_RST}')
-
-            # 5. Log
 
             self.log_manager.log_statement(current_agent.name, response, metadata)
 
             history_log.append(f"{current_agent.name}: {response}")
-
-            # 6. Record eval metrics for this turn
 
             if self.metrics_tracker is not None:
                 self.metrics_tracker.record_turn(current_agent.name, response, metadata)
@@ -1006,23 +1200,19 @@ class RainLabOrchestrator:
         topic: str,
         is_wrap_up: bool = False,
     ) -> Tuple[Optional[str], Optional[Dict]]:
-        """Generate agent response: build prompt, call LLM, refine, validate."""
         recent_chat = "\n".join(history_log[-self.config.recent_history_window :]) if history_log else "[Meeting Start]"
 
-        # Choose mission
         if is_wrap_up:
             mission = get_wrap_up_instruction(agent, topic)
         else:
             mission = self.director.get_dynamic_instruction(agent, turn_count, topic)
 
-        # Determine previous speaker
         prev_speaker = None
         if history_log:
             last_entry = history_log[-1]
             if ":" in last_entry:
                 prev_speaker = last_entry.split(":")[0].strip()
 
-        # Build messages
         graph_findings = None
         if agent.name == "Luca":
             graph_findings = self.hypergraph_manager.query(topic=topic)
@@ -1030,7 +1220,6 @@ class RainLabOrchestrator:
         user_msg = build_user_message(agent, recent_chat, mission, prev_speaker, graph_findings)
         system_msg = f"{agent.soul}\n\n### RESEARCH DATABASE\n{context_block}"
 
-        # Call LLM with retry
         for attempt in range(self.config.max_retries):
             with self._LiveSpinner(f"{agent.name} is thinking", color=_resolve_color(agent.color)):
                 content, finish_reason = call_llm_with_retry(
@@ -1050,7 +1239,6 @@ class RainLabOrchestrator:
                     continue
                 return None, None
 
-            # Guardrail: fix repeated intro on later James turns
             if turn_count >= 1 and agent.name == "James":
                 content = fix_repeated_intro(
                     self.client,
@@ -1060,7 +1248,6 @@ class RainLabOrchestrator:
                     context_block,
                 )
 
-            # Recursive self-reflection
             content = refine_response(
                 self.client,
                 self.config,
@@ -1070,12 +1257,10 @@ class RainLabOrchestrator:
                 metrics_tracker=self.metrics_tracker,
             )
 
-            # Identity cleanup
             from rain_lab_chat.guardrails import clean_identity
 
             content = clean_identity(content, agent.name)
 
-            # Handle truncation
             content = handle_truncation(
                 self.client,
                 self.config,
@@ -1084,10 +1269,9 @@ class RainLabOrchestrator:
                 finish_reason,
             )
 
-            # Corruption check
             corrupted, reason = is_corrupted_response(content)
             if corrupted:
-                print(f"\n\u26a0\ufe0f  Corrupted response detected ({reason})")
+                print(f"\n⚠️  Corrupted response detected ({reason})")
                 if attempt < self.config.max_retries - 1:
                     print("   Regenerating...")
                     import time as _t
@@ -1098,7 +1282,7 @@ class RainLabOrchestrator:
                     print("   Falling back to placeholder response.")
                     content = f"[{agent.name} is processing... Let me gather my thoughts on this topic.]"
 
-            print("\u2713")
+            print("✓")
             return content, {}
 
         return None, None

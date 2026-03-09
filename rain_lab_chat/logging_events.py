@@ -15,6 +15,13 @@ from rain_lab_chat.config import Config
 log = get_logger(__name__)
 
 
+def _resolve_configured_path(library_path: str, configured_path: str) -> Path:
+    raw = Path(configured_path).expanduser()
+    if raw.is_absolute():
+        return raw
+    return Path(library_path) / raw
+
+
 class LogManager:
     """Handles meeting transcription with metadata and log rotation"""
 
@@ -26,9 +33,9 @@ class LogManager:
 
         self.config = config
 
-        self.log_path = Path(config.library_path) / config.meeting_log
+        self.log_path = _resolve_configured_path(config.library_path, config.meeting_log)
 
-        self.archive_dir = Path(config.library_path) / "meeting_archives"
+        self.archive_dir = _resolve_configured_path(config.library_path, "meeting_archives")
 
         # Check if rotation needed on startup
 
@@ -161,9 +168,7 @@ class CheckpointManager:
 
         self.config = config
 
-        raw = Path(config.checkpoint_path).expanduser()
-
-        self.path = raw if raw.is_absolute() else Path(config.library_path) / raw
+        self.path = _resolve_configured_path(config.library_path, config.checkpoint_path)
 
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -182,6 +187,32 @@ class CheckpointManager:
 
         except Exception as e:
             log.warning("Checkpoint write failed: %s", e)
+
+
+class SessionRunLedger:
+    def __init__(self, config: Config):
+
+        self.config = config
+
+        self.path = _resolve_configured_path(config.library_path, config.session_runs_path)
+
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+
+        except Exception as e:
+            log.warning("Session run ledger directory unavailable: %s", e)
+
+    def append(self, payload: Dict):
+
+        record = dict(payload)
+        record.setdefault("recorded_at", datetime.utcnow().isoformat() + "Z")
+
+        try:
+            with open(self.path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+        except Exception as e:
+            log.warning("Session run ledger write failed: %s", e)
 
 
 def _parse_checkpoint_for_resume(path: Path) -> dict:
@@ -283,7 +314,7 @@ class VisualEventLogger:
     def __init__(self, config: Config):
 
         self.enabled = bool(config.emit_visual_events)
-        self.path = self._resolve_path(config.library_path, config.visual_events_log)
+        self.path = _resolve_configured_path(config.library_path, config.visual_events_log)
 
         if self.enabled:
             try:
@@ -293,14 +324,6 @@ class VisualEventLogger:
                 log.warning("Visual event logger unavailable: %s", e)
 
                 self.enabled = False
-
-    @staticmethod
-    def _resolve_path(library_path: str, configured_path: str) -> Path:
-
-        raw = Path(configured_path).expanduser()
-        if raw.is_absolute():
-            return raw
-        return Path(library_path) / raw
 
     def emit(self, payload: Dict):
 
