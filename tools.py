@@ -262,7 +262,7 @@ def search_web(query):
         try:
             with DDGS() as ddgs:
                 results = list(ddgs.text(query, max_results=5))
-        except:
+        except Exception:
              # Fallback for older versions or if context manager fails
              results = list(DDGS().text(query, max_results=5))
 
@@ -382,7 +382,7 @@ def search_library(query):
                 if match_count > 0:
                      score = match_count / len(keywords)
                      results.append((score, filename, [k for k in keywords if k in content_lower]))
-        except:
+        except Exception:
             pass
 
     # Sort by score
@@ -867,7 +867,7 @@ def compare_metrics(paper1_claims: list, paper2_claims: list) -> str:
                 result += "Paper 2 has higher average values.\n"
             else:
                 result += "Similar average magnitudes.\n"
-        except:
+        except Exception:
             pass
 
     return result
@@ -979,7 +979,7 @@ def _load_memory():
                 data = json.load(f)
                 _entities = data.get('entities', {})
                 _topics = data.get('topics', [])
-    except:
+    except Exception:
         pass
 
 
@@ -990,7 +990,7 @@ def _save_memory():
         import json
         with open(_memory_file, 'w') as f:
             json.dump({'entities': _entities, 'topics': _topics}, f)
-    except:
+    except Exception:
         pass
 
 

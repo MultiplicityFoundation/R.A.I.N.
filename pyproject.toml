@@ -22,7 +22,6 @@ ignore = [
     "W291",   # trailing whitespace
     "W293",   # whitespace before a statement (blank lines with spaces)
     "W605",   # invalid escape sequence — raw-string Windows paths
-    "E722",   # bare except — used intentionally in several scripts
 ]
 
 [tool.pytest.ini_options]

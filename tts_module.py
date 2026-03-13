@@ -221,7 +221,7 @@ class TTSEngine:
         if self._pyttsx3_engine:
             try:
                 self._pyttsx3_engine.stop()
-            except:
+            except Exception:
                 pass
 
 
@@ -267,7 +267,7 @@ def list_voices() -> list:
             engine = pyttsx3.init()
             voices = engine.getProperty('voices')
             return [(v.id, v.name) for v in voices]
-        except:
+        except Exception:
             return []
     return []
 

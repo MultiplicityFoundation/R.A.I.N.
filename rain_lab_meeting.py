@@ -327,7 +327,7 @@ def search_web(query):
         try:
             with DDGS() as ddgs:
                 results = list(ddgs.text(query, max_results=5))
-        except:
+        except Exception:
              # Fallback for older versions or if context manager fails
              results = list(DDGS().text(query, max_results=5))
 
@@ -426,7 +426,7 @@ def search_library(query):
                 if match_count > 0:
                      score = match_count / len(keywords)
                      results.append((score, filename, [k for k in keywords if k in content_lower]))
-        except:
+        except Exception:
             pass
             
     # Sort by score
