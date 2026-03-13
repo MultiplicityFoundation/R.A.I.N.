@@ -14,28 +14,23 @@ hero:
       icon: material/arrow-left
 ---
 
-# the engine room
-
-# Vers3Dynamics' R.A.I.N. Lab🐙
+# R.A.I.N. Lab 🐙
 
 <p align="center">
   <img src="assets/rain_lab_logo.png" alt="R.A.I.N. Lab logo" width="900" />
 </p>
 
-A lightweight framework for building modular AI systems,
-experimental agent architectures, and research prototypes.
+A local-first AI research workspace for running guided chat, experiments, and autonomous research flows without heavy setup.
 
-This is designed for researchers, builders, and experimental
-AI developers who want a simple architecture for composing
-agents, modules, and tools without heavyweight frameworks.
+If you are not a developer, you can still use this project in minutes. Start with the **Quick Start for Everyone** section below.
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/topherchris420/james_library)
 
-## Autonomous Acoustic Physics and Resonance Research Platform
+## What this project is (in plain language)
 
 <p align="center">
   <strong>
-    Bridging autonomous AI agents with acoustic physics research through a unified Rust-first execution engine.
+    R.A.I.N. Lab helps you run AI-assisted research conversations and experiment workflows from one launcher.
   </strong>
 </p>
 
@@ -45,6 +40,60 @@ agents, modules, and tools without heavyweight frameworks.
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-0078D4?style=flat-square" alt="Platform" />
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License" />
 </p>
+
+---
+
+### Best for
+
+- Researchers and students exploring ideas with AI
+- Builders who want local/offline-friendly workflows
+- Teams who want both a guided launcher and advanced developer tooling
+
+### Includes
+
+- **Simple launcher** (`rain_lab.py`) for chat, setup, status, and validation
+- **ZeroClaw runtime (Rust)** for fast and stable orchestration
+- **James Library workflows (Python)** for research and synthesis flows
+
+---
+
+## Quick Start for Everyone (5–10 minutes)
+
+Choose your operating system and run one command:
+
+### Linux/macOS
+
+```bash
+bash scripts/quickstart_lmstudio.sh
+```
+
+### Windows (PowerShell)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\quickstart_lmstudio.ps1
+```
+
+Then run:
+
+```bash
+python rain_lab.py --mode first-run
+python rain_lab.py --mode chat --ui auto --topic "your question"
+```
+
+That is enough to get a working first experience.
+
+---
+
+## What to run next
+
+```bash
+python rain_lab.py --mode status      # shows environment + runtime status
+python rain_lab.py --mode models      # lists detected models/providers
+python rain_lab.py --mode validate    # checks readiness and common issues
+python rain_lab.py --mode onboard     # guided setup flow
+```
+
+If Rust is not installed yet, core Python research flows still work.
 
 ---
 
@@ -112,7 +161,7 @@ graph TB
 
 ---
 
-## Quick Start
+## Developer Quick Start
 
 ### Prerequisites
 
@@ -135,7 +184,7 @@ Windows PowerShell:
 powershell -ExecutionPolicy Bypass -File .\scripts\quickstart_lmstudio.ps1
 ```
 
-This path bootstraps `.venv`, installs Python dependencies, prepares the embedded ZeroClaw runtime when Cargo is available, and runs a launcher-native health snapshot.
+This path bootstraps `.venv`, installs Python dependencies, prepares the embedded ZeroClaw runtime when Cargo is available, and runs a launcher health snapshot.
 
 Canonical next steps:
 
@@ -147,7 +196,7 @@ python rain_lab.py --mode models
 python rain_lab.py --mode chat --ui auto --topic "your research question"
 ```
 
-If Rust or a prebuilt `zeroclaw` binary is not available yet, the Python research flows still work. Rust-side launcher modes become available after you install Rust or point `--zeroclaw-bin` at a prebuilt runtime.
+If Rust or a prebuilt `zeroclaw` binary is not available yet, Python research flows still work. Rust-side launcher modes become available after you install Rust or point `--zeroclaw-bin` at a prebuilt runtime.
 
 ### Full Setup / Development
 
