@@ -54,8 +54,15 @@ The R.A.I.N. Lab🐙 is an R&D lab for non-linear wave interactions and bio-acou
 
 The system combines:
 
-- **ZeroClaw (The Body)**: Rust agent runtime for orchestration, tools, channels, and policy enforcement.
-- **James Library (The Mind)**: Python research workflows for resonance, recursive meetings, and synthesis.
+- **ZeroClaw (runtime package / crate name)**: Rust agent runtime for orchestration, tools, channels, and policy enforcement.
+- **James Library (repository name)**: Python research workflows for resonance, recursive meetings, and synthesis.
+- **R.A.I.N. Lab (product name)**: integrated developer/research experience powered by both layers.
+
+Contributor naming hierarchy (quick reference):
+
+1. Product UX/docs: **R.A.I.N. Lab**
+2. Rust runtime internals: **ZeroClaw** (`zeroclaw` crate/binary)
+3. Python orchestration/research scripts: **James Library**
 
 ---
 
@@ -294,9 +301,19 @@ MIT License. See [LICENSE](LICENSE).
 
 The R.A.I.N. Lab is proudly built on the foundation of ZeroClaw and MIT CSAIL. Huge thanks to both teams for creating such a high-performance, lightweight agent runtime that made this Vers3Dynamics lab possible.
 
-## 📊 Benchmark: R.A.I.N. Lab vs AutoResearch
+## 📊 Benchmark Snapshot: R.A.I.N. Lab vs AutoResearch
 
-> Independent technical comparison across 8 dimensions. Scores based on measurable codebase properties — architecture scope, CI setup, local capability, agent framework, and language diversity. Built on [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw) (Rust agent runtime). Community reach excluded from scoring.
+> Comparative snapshot across 8 technical dimensions. This section is intended as a transparent, reproducible reference, not a universal ranking.
+
+Methodology and reproducibility:
+
+- Scoring rubric + dataset: [`benchmark_data/rain_vs_autoresearch.csv`](benchmark_data/rain_vs_autoresearch.csv)
+- Reproduction script: [`scripts/benchmark/reproduce_readme_benchmark.py`](scripts/benchmark/reproduce_readme_benchmark.py)
+- Recompute summary table locally:
+
+```bash
+python scripts/benchmark/reproduce_readme_benchmark.py
+```
 
 ### Bar Chart
 
@@ -309,7 +326,7 @@ The R.A.I.N. Lab is proudly built on the foundation of ZeroClaw and MIT CSAIL. H
 | Metric | R.A.I.N. Lab | AutoResearch |
 |---|---|---|
 | Average Score | **9.1** | 3.6 |
-| Peak Score | **10** | 6 |
+| Peak Score | **10** | 8 |
 | Categories Won | **8 / 8** | 0 / 8 |
 | Released | **Feb 2026** | Mar 7, 2026 |
 | Runtime | **Rust + Python** | Python only |
@@ -326,4 +343,3 @@ The R.A.I.N. Lab is proudly built on the foundation of ZeroClaw and MIT CSAIL. H
   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=topherchris420/james_library&type=Date&v=1">
   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=topherchris420/james_library&type=Date&v=1">
 </picture>
-
