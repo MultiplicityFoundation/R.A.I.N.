@@ -1,8 +1,35 @@
-# Vers3Dynamics
+---
+hide:
+  - navigation
+  - toc
+hero:
+  title: The R.A.I.N. Lab Documentation
+  subtitle: The official technical reference for the enterprise-grade epistemic laboratory and multi-agent architecture.
+  actions:
+    - name: System Architecture
+      link: ARCHITECTURE/
+      icon: material/cpu-64-bit
+    - name: Back to Main Site
+      link: https://rainlabteam.vercel.app/
+      icon: material/arrow-left
+---
+
+# the engine room
+
+# Vers3Dynamics' R.A.I.N. Lab🐙
 
 <p align="center">
   <img src="assets/rain_lab_logo.png" alt="R.A.I.N. Lab logo" width="900" />
 </p>
+
+A lightweight framework for building modular AI systems,
+experimental agent architectures, and research prototypes.
+
+This is designed for researchers, builders, and experimental
+AI developers who want a simple architecture for composing
+agents, modules, and tools without heavyweight frameworks.
+
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/topherchris420/james_library)
 
 ## Autonomous Acoustic Physics and Resonance Research Platform
 
@@ -23,7 +50,7 @@
 
 ## Mission
 
-Vers3Dynamics R.A.I.N. Lab is an R&D platform for non-linear wave interactions and bio-acoustic phenomena.
+The R.A.I.N. Lab🐙 is an R&D lab for non-linear wave interactions and bio-acoustic experiments.
 
 The system combines:
 
@@ -82,24 +109,51 @@ graph TB
 
 ### Prerequisites
 
-- Rust 1.87+
-- Python 3.10+
+- Python 3.10+ (required)
+- LM Studio for the recommended local-first path
+- Rust 1.87+ (recommended for local ZeroClaw builds and development)
 - Optional: Miniconda for Python env management
 
-### Full Setup
+### Recommended Local-First Path (LM Studio)
+
+Linux/macOS:
+
+```bash
+bash scripts/quickstart_lmstudio.sh
+```
+
+Windows PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\quickstart_lmstudio.ps1
+```
+
+This path bootstraps `.venv`, installs Python dependencies, prepares the embedded ZeroClaw runtime when Cargo is available, and runs a launcher-native health snapshot.
+
+Canonical next steps:
+
+```bash
+python rain_lab.py --mode validate
+python rain_lab.py --mode first-run
+python rain_lab.py --mode status
+python rain_lab.py --mode models
+python rain_lab.py --mode chat --ui auto --topic "your research question"
+```
+
+If Rust or a prebuilt `zeroclaw` binary is not available yet, the Python research flows still work. Rust-side launcher modes become available after you install Rust or point `--zeroclaw-bin` at a prebuilt runtime.
+
+### Full Setup / Development
 
 ```bash
 git clone https://github.com/topherchris420/james_library.git
 cd james_library
 
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-
-cargo build --release
+python bootstrap_local.py
+cargo build --release --locked
+python rain_lab.py --mode first-run
 ```
 
-### Python Research Only
+### Python-First Research Flow
 
 ```bash
 python rain_lab.py --mode first-run
@@ -112,8 +166,36 @@ python rain_lab.py --mode rlm --topic "acoustic resonance phenomena"
 ```text
 1) Double-click INSTALL_RAIN.cmd
 2) Wait for install to finish
-3) Launch R.A.I.N. Lab Chat from Desktop or Start Menu
+3) Double-click R.A.I.N. Lab from your Desktop or Start Menu
+4) Optional: run "R.A.I.N. Lab Validate" from the Start Menu for a full readiness check
+5) Optional: run "R.A.I.N. Lab Health Snapshot" for a quick one-screen status view
+6) On first launch, guided setup runs automatically and then opens chat
 ```
+
+### Useful Launcher Modes
+
+```bash
+python rain_lab.py --mode health
+python rain_lab.py --mode validate
+python rain_lab.py --mode first-run
+python rain_lab.py --mode status
+python rain_lab.py --mode models
+python rain_lab.py --mode providers
+python rain_lab.py --mode onboard
+python rain_lab.py --mode gateway
+```
+
+---
+
+## Download Binaries
+
+If you do not want to build from source, download prebuilt binaries from:
+
+- https://github.com/topherchris420/james_library/releases
+
+Supported release targets and extraction steps are documented in:
+
+- [docs/BINARY_RELEASES.md](docs/BINARY_RELEASES.md)
 
 ---
 
@@ -199,9 +281,44 @@ python rain_lab.py --mode chat --ui on --topic "your topic"
 - [CONTRIBUTING.md](CONTRIBUTING.md)
 - [SECURITY.md](SECURITY.md)
 - [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md)
+- [docs/FIRST_RUN_CHECKLIST.md](docs/FIRST_RUN_CHECKLIST.md)
+- [docs/BINARY_RELEASES.md](docs/BINARY_RELEASES.md)
 
 ---
 
 ## License
 
 MIT License. See [LICENSE](LICENSE).
+
+## Acknowledgement 
+
+The R.A.I.N. Lab is proudly built on the foundation of ZeroClaw and MIT CSAIL. Huge thanks to both teams for creating such a high-performance, lightweight agent runtime that made this Vers3Dynamics lab possible.
+
+## 📊 Benchmark: R.A.I.N. Lab vs AutoResearch
+
+> Independent technical comparison across 8 dimensions. Scores based on measurable codebase properties — architecture scope, CI setup, local capability, agent framework, and language diversity. Built on [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw) (Rust agent runtime). Community reach excluded from scoring.
+
+### Bar Chart
+
+![R.A.I.N. Lab vs AutoResearch — Technical Benchmark](assets/benchmark_chart.png)
+
+### Radar Chart
+
+![R.A.I.N. Lab vs AutoResearch — Radar Benchmark](assets/benchmark_radar.png)
+
+| Metric | R.A.I.N. Lab | AutoResearch |
+|---|---|---|
+| Average Score | **9.1** | 3.6 |
+| Peak Score | **10** | 6 |
+| Categories Won | **8 / 8** | 0 / 8 |
+| Released | **Feb 2026** | Mar 7, 2026 |
+| Runtime | **Rust + Python** | Python only |
+| Local / Offline | **✅ Yes** | ❌ No |
+| Multi-Agent | **✅ Yes** | ❌ No |
+| Visualization | **✅ Godot 3D** | ❌ None |
+
+> **Note:** R.A.I.N. Lab was released ~18 days before AutoResearch. These projects were built independently and serve different domains — R.A.I.N. Lab for autonomous acoustic physics research, AutoResearch for ML training automation.
+
+## 🐙 R.A.I.N. Lab
+
+[![Star History Chart](https://api.star-history.com/image?repos=topherchris420/james_library&type=date&legend=top-left)](https://www.star-history.com/?repos=topherchris420%2Fjames_library&type=date&legend=top-left))
