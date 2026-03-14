@@ -87,8 +87,6 @@ mod util;
 
 use config::Config;
 
-const JAMES_BODY_DAEMON_DEFAULT_PORT: u16 = 4200;
-
 // Re-export so binary modules can use crate::<CommandEnum> while keeping a single source of truth.
 pub use zeroclaw::{
     ChannelCommands, CronCommands, HardwareCommands, IntegrationCommands, MigrateCommands,
@@ -205,16 +203,16 @@ Examples:
 Start the gateway server (webhooks, websockets).
 
 Runs the HTTP/WebSocket gateway that accepts incoming webhook events \
-and WebSocket connections. Host defaults to the value in your config file \
-(gateway.host), and port defaults to 4200 for the Body-daemon bridge.
+and WebSocket connections. Bind host/port default to your config file \
+(gateway.host / gateway.port).
 
 Examples:
-  zeroclaw gateway                  # default host + port 4200
+  zeroclaw gateway                  # use config defaults
   zeroclaw gateway -p 8080          # listen on port 8080
   zeroclaw gateway --host 0.0.0.0   # bind to all interfaces
   zeroclaw gateway -p 0             # random available port")]
     Gateway {
-        /// Port to listen on (use 0 for random available port); defaults to 4200
+        /// Port to listen on (use 0 for random available port); defaults to config gateway.port
         #[arg(short, long)]
         port: Option<u16>,
 
@@ -236,11 +234,11 @@ Use 'zeroclaw service install' to register the daemon as an OS \
 service (systemd/launchd) for auto-start on boot.
 
 Examples:
-  zeroclaw daemon                   # default host + port 4200
+  zeroclaw daemon                   # use config defaults
   zeroclaw daemon -p 9090           # gateway on port 9090
   zeroclaw daemon --host 127.0.0.1  # localhost only")]
     Daemon {
-        /// Port to listen on (use 0 for random available port); defaults to 4200
+        /// Port to listen on (use 0 for random available port); defaults to config gateway.port
         #[arg(short, long)]
         port: Option<u16>,
 
@@ -792,25 +790,25 @@ async fn main() -> Result<()> {
         .map(|_| ()),
 
         Commands::Gateway { port, host } => {
-            let port = port.unwrap_or(JAMES_BODY_DAEMON_DEFAULT_PORT);
+            let port = port.unwrap_or(config.gateway.port);
             let host = host.unwrap_or_else(|| config.gateway.host.clone());
             enforce_estop_allows_runtime_start(&config)?;
             if port == 0 {
                 info!("🚀 Starting ZeroClaw Gateway on {host} (random port)");
             } else {
-                info!("🚀 Starting ZeroClaw Gateway (Body Daemon bridge) on {host}:{port}");
+                info!("🚀 Starting ZeroClaw Gateway on {host}:{port}");
             }
             gateway::run_gateway(&host, port, config).await
         }
 
         Commands::Daemon { port, host } => {
-            let port = port.unwrap_or(JAMES_BODY_DAEMON_DEFAULT_PORT);
+            let port = port.unwrap_or(config.gateway.port);
             let host = host.unwrap_or_else(|| config.gateway.host.clone());
             enforce_estop_allows_runtime_start(&config)?;
             if port == 0 {
                 info!("🧠 Starting ZeroClaw Daemon on {host} (random port)");
             } else {
-                info!("🧠 Starting ZeroClaw Daemon (Body mode) on {host}:{port}");
+                info!("🧠 Starting ZeroClaw Daemon on {host}:{port}");
             }
             daemon::run(config, host, port).await
         }
