@@ -15,7 +15,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 
 pub const RESEARCH_TOPIC: &str = "research/acoustic-physics";
-const DEFAULT_LISTEN_ADDR: &str = "/ip4/0.0.0.0/tcp/0";
+const DEFAULT_LISTEN_ADDR: &str = "/ip4/127.0.0.1/tcp/0";
 
 static PUBLISHER: tokio::sync::OnceCell<mpsc::Sender<String>> = tokio::sync::OnceCell::const_new();
 
@@ -179,6 +179,10 @@ pub async fn publish_advisory_result(body: &str) {
 
 fn parse_bootstrap_addrs() -> Vec<(PeerId, Multiaddr)> {
     let raw = std::env::var("ZEROCLAW_P2P_BOOTSTRAP").unwrap_or_default();
+    parse_bootstrap_addrs_from(&raw)
+}
+
+fn parse_bootstrap_addrs_from(raw: &str) -> Vec<(PeerId, Multiaddr)> {
     raw.split(',')
         .filter_map(|entry| {
             let trimmed = entry.trim();
@@ -244,8 +248,7 @@ mod tests {
 
     #[test]
     fn bootstrap_addr_without_peer_id_is_ignored() {
-        std::env::set_var("ZEROCLAW_P2P_BOOTSTRAP", "/ip4/127.0.0.1/tcp/4001");
-        let parsed = parse_bootstrap_addrs();
+        let parsed = parse_bootstrap_addrs_from("/ip4/127.0.0.1/tcp/4001");
         assert!(parsed.is_empty());
     }
 }
