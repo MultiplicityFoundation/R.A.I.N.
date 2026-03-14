@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use futures::StreamExt;
+use futures_util::StreamExt;
 use libp2p::{
     gossipsub::{self, IdentTopic, MessageAuthenticity},
     identity,
