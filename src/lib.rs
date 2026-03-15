@@ -59,6 +59,7 @@ pub(crate) mod migration;
 pub(crate) mod multimodal;
 pub mod observability;
 pub(crate) mod onboard;
+#[cfg(feature = "p2p")]
 pub mod p2p;
 pub mod peripherals;
 pub mod providers;
@@ -72,72 +73,6 @@ pub(crate) mod tunnel;
 pub(crate) mod util;
 
 pub use config::Config;
-
-/// Gateway management subcommands
-#[derive(Subcommand, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum GatewayCommands {
-    /// Start the gateway server (default if no subcommand specified)
-    #[command(long_about = "\
-Start the gateway server (webhooks, websockets).
-
-Runs the HTTP/WebSocket gateway that accepts incoming webhook events \
-and WebSocket connections. Bind address defaults to the values in \
-your config file (gateway.host / gateway.port).
-
-Examples:
-  zeroclaw gateway start              # use config defaults
-  zeroclaw gateway start -p 8080      # listen on port 8080
-  zeroclaw gateway start --host 0.0.0.0   # requires [gateway].allow_public_bind=true or a tunnel
-  zeroclaw gateway start -p 0         # random available port")]
-    Start {
-        /// Port to listen on (use 0 for random available port); defaults to config gateway.port
-        #[arg(short, long)]
-        port: Option<u16>,
-
-        /// Host to bind to; defaults to config gateway.host
-        /// Note: Binding to 0.0.0.0 requires `gateway.allow_public_bind = true` in config
-        #[arg(long)]
-        host: Option<String>,
-    },
-    /// Restart the gateway server
-    #[command(long_about = "\
-Restart the gateway server.
-
-Stops the running gateway if present, then starts a new instance \
-with the current configuration.
-
-Examples:
-  zeroclaw gateway restart            # restart with config defaults
-  zeroclaw gateway restart -p 8080    # restart on port 8080")]
-    Restart {
-        /// Port to listen on (use 0 for random available port); defaults to config gateway.port
-        #[arg(short, long)]
-        port: Option<u16>,
-
-        /// Host to bind to; defaults to config gateway.host
-        /// Note: Binding to 0.0.0.0 requires `gateway.allow_public_bind = true` in config
-        #[arg(long)]
-        host: Option<String>,
-    },
-    /// Show or generate the pairing code without restarting
-    #[command(long_about = "\
-Show or generate the gateway pairing code.
-
-Displays the pairing code for connecting new clients without \
-restarting the gateway. Requires the gateway to be running.
-
-With --new, generates a fresh pairing code even if the gateway \
-was previously paired (useful for adding additional clients).
-
-Examples:
-  zeroclaw gateway get-paircode       # show current pairing code
-  zeroclaw gateway get-paircode --new # generate a new pairing code")]
-    GetPaircode {
-        /// Generate a new pairing code (even if already paired)
-        #[arg(long)]
-        new: bool,
-    },
-}
 
 /// Service management subcommands
 #[derive(Subcommand, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -202,31 +137,6 @@ Examples:
     BindTelegram {
         /// Telegram identity to allow (username without '@' or numeric user ID)
         identity: String,
-    },
-    /// Send a message to a configured channel
-    #[command(long_about = "\
-Send a one-off message to a configured channel.
-
-Sends a text message through the specified channel without starting \
-the full agent loop. Useful for scripted notifications, hardware \
-sensor alerts, and automation pipelines.
-
-The --channel-id selects the channel by its config section name \
-(e.g. 'telegram', 'discord', 'slack'). The --recipient is the \
-platform-specific destination (e.g. a Telegram chat ID).
-
-Examples:
-  zeroclaw channel send 'Someone is near your device.' --channel-id telegram --recipient 123456789
-  zeroclaw channel send 'Build succeeded!' --channel-id discord --recipient 987654321")]
-    Send {
-        /// Message text to send
-        message: String,
-        /// Channel config name (e.g. telegram, discord, slack)
-        #[arg(long)]
-        channel_id: String,
-        /// Recipient identifier (platform-specific, e.g. Telegram chat ID)
-        #[arg(long)]
-        recipient: String,
     },
 }
 
@@ -418,59 +328,6 @@ pub enum MemoryCommands {
         /// Skip confirmation prompt
         #[arg(long)]
         yes: bool,
-    },
-}
-
-/// P2P networking subcommands
-#[derive(Subcommand, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum P2pCommands {
-    /// Show P2P node status (peer ID, listen addresses, connected peers)
-    Status,
-    /// Publish a message to a gossipsub topic
-    #[command(long_about = "\
-Publish a text message to a gossipsub topic.
-
-Sends a UTF-8 message to the specified topic through the P2P gossip \
-network. Requires the P2P runtime to be enabled and started.
-
-Examples:
-  zeroclaw p2p publish 'sensor reading: 42' --topic zeroclaw/advisory
-  zeroclaw p2p publish 'hello peers'")]
-    Publish {
-        /// Message text to publish
-        message: String,
-        /// Topic to publish to (default: zeroclaw/advisory)
-        #[arg(long, default_value = "zeroclaw/advisory")]
-        topic: String,
-    },
-    /// Store a key-value record in the Kademlia DHT
-    #[command(long_about = "\
-Store a key-value pair in the distributed hash table.
-
-The record is replicated to nearby peers via Kademlia DHT. \
-Keys and values are UTF-8 strings.
-
-Examples:
-  zeroclaw p2p put-record my-key my-value
-  zeroclaw p2p put-record sensor/temp '22.5'")]
-    PutRecord {
-        /// Record key
-        key: String,
-        /// Record value
-        value: String,
-    },
-    /// Retrieve a record from the Kademlia DHT
-    #[command(long_about = "\
-Look up a value by key in the distributed hash table.
-
-Queries the Kademlia DHT for the record associated with the given key.
-
-Examples:
-  zeroclaw p2p get-record my-key
-  zeroclaw p2p get-record sensor/temp")]
-    GetRecord {
-        /// Record key to look up
-        key: String,
     },
 }
 

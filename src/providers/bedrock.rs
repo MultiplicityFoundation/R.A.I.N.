@@ -697,6 +697,7 @@ impl BedrockProvider {
                         let after_semi = &rest[semi + 1..];
                         if let Some(b64) = after_semi.strip_prefix("base64,") {
                             let format = match mime {
+                                "image/jpeg" | "image/jpg" => "jpeg",
                                 "image/png" => "png",
                                 "image/gif" => "gif",
                                 "image/webp" => "webp",
@@ -1262,8 +1263,7 @@ mod tests {
         assert!(
             err.contains("credentials not set")
                 || err.contains("169.254.169.254")
-                || err.to_lowercase().contains("credential")
-                || err.to_lowercase().contains("builder error"),
+                || err.to_lowercase().contains("credential"),
             "Expected missing-credentials style error, got: {err}"
         );
     }

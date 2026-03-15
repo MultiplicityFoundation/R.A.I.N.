@@ -7,6 +7,7 @@
 //! Bug: Previously, `send_attachment()` would propagate the error from
 //! `send_document_by_url()` immediately via `?`, causing the entire reply
 //! (including already-sent text) to fail with no fallback.
+#![cfg(feature = "test-wiremock")]
 
 use wiremock::matchers::{method, path_regex};
 use wiremock::{Mock, MockServer, ResponseTemplate};
