@@ -149,12 +149,14 @@ func _handle_resonance_state(event_payload: Dictionary) -> void:
 func _handle_conversation_ended() -> void:
 	_audio_sync.stop_current_utterance(true)
 	_set_active_speaker("")
+	_background_layer.apply_resonance(0.0, 0.0, 0.5)
 	_dialogue_ui.show_status("Conversation ended.")
 
 
 func _handle_conversation_reset() -> void:
 	_audio_sync.stop_current_utterance(true)
 	_spawn_participants([])
+	_background_layer.apply_resonance(0.0, 0.0, 0.5)
 	_dialogue_ui.show_status("Replay reset.")
 
 

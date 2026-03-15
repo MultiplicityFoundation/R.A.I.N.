@@ -43,7 +43,7 @@ func apply_theme(theme_id: String, background_cfg: Dictionary) -> void:
 	if cymatics_hex != "" and _cymatics_rect != null:
 		var mat: Variant = _cymatics_rect.material
 		if mat is ShaderMaterial:
-			(mat as ShaderMaterial).set_shader_parameter("line_color", Color(cymatics_hex))
+			(mat as ShaderMaterial).set_shader_parameter("line_color", _color_from(cymatics_hex, "#66d9ff"))
 
 	queue_redraw()
 
