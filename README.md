@@ -21,62 +21,270 @@ hero:
 </p>
 
 <p align="center">
-  <strong>A local-first AI research workspace for guided chat, experiments, and autonomous research flows.</strong>
+  <strong>Your personal AI research assistant — talk about ideas, verify discoveries, and organize your work.</strong>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/rust-1.87+-dea584?style=flat-square&logo=rust" alt="Rust" />
-  <img src="https://img.shields.io/badge/python-3.10+-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python" />
+  <img src="https://img.shields.io/badge/python-3.10+-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+" />
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-0078D4?style=flat-square" alt="Platform" />
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License" />
+  <img src="https://img.shields.io/badge/rust-1.87+%20(optional)-dea584?style=flat-square&logo=rust" alt="Rust (optional)" />
 </p>
 
 <p align="center">
   <a href="https://deepwiki.com/topherchris420/james_library"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki" /></a>
 </p>
 
-R.A.I.N. Lab are AI research assistants that talks with you about your ideas, checks if your discoveries are actually new, and helps organize your research. Regular AI can "discover" things you already know — R.A.I.N. Lab checks your internal knowledge and online sources to make sure you're exploring genuinely new territory.
+---
 
-**Best for:** Researchers, students, and curious minds exploring physics, sound, resonance, or any complex topic.
+## What is R.A.I.N. Lab?
+
+R.A.I.N. Lab is an AI-powered research assistant that helps you explore ideas and make real discoveries. Unlike a regular chatbot that might "discover" things you already know, R.A.I.N. Lab cross-checks your internal knowledge and online sources to make sure you are exploring genuinely new territory.
+
+**What you can do with it:**
+
+- Have guided research conversations about any topic
+- Run structured "lab meetings" where multiple AI agents debate and refine your ideas
+- Automatically check whether a finding is novel or already known
+- Organize and synthesize your research notes
+
+**Who it is for:** Researchers, students, hobbyists, and anyone curious about physics, sound, engineering, or any complex topic. No programming experience is required to use it.
 
 ---
 
-## How the Pieces Fit Together
+## Install in 3 Steps
 
-This repository ships one product (**R.A.I.N. Lab**) built from two layers:
+R.A.I.N. Lab runs on **Windows**, **macOS**, and **Linux**. Pick your platform below and follow the steps.
 
-| Layer | What it does | Language | Entry point |
-|-------|-------------|----------|-------------|
-| **ZeroClaw** | Agent runtime — orchestration, tools, channels, memory, security | Rust | `zeroclaw` binary |
-| **James Library** | Research workflows — recursive lab meetings, synthesis, acoustic physics | Python | `rain_lab.py` |
-
-You interact with **R.A.I.N. Lab** as a single product. Under the hood, `rain_lab.py` drives the Python research layer and delegates to the ZeroClaw runtime for fast orchestration. Python research flows work standalone; the Rust runtime adds speed, channels, and tool execution.
+> **What you will need before you start:**
+>
+> - An internet connection (to download the project)
+> - About 1 GB of free disk space
+> - **Python 3.10 or newer** (the install guide below shows you how to get it)
 
 ---
 
-## Quick Start
+### Windows
 
-```bash
+<details>
+<summary><strong>Click to expand Windows setup instructions</strong></summary>
+
+#### Step 1 — Install Python (if you do not have it)
+
+1. Open your web browser and go to [python.org/downloads](https://www.python.org/downloads/).
+2. Click the big yellow **"Download Python 3.x.x"** button.
+3. Run the installer. **Important:** Check the box that says **"Add python.exe to PATH"** at the bottom of the first screen, then click **Install Now**.
+4. When the install finishes, close the installer.
+
+To verify it worked, open **Command Prompt** (search for "cmd" in the Start menu) and type:
+
+```
+python --version
+```
+
+You should see something like `Python 3.12.x`. If you see an error, restart your computer and try again.
+
+#### Step 2 — Download R.A.I.N. Lab
+
+**Option A — One-click download (easiest):**
+
+1. Go to the [Releases page](https://github.com/topherchris420/james_library/releases).
+2. Download the latest `.zip` file for Windows.
+3. Right-click the downloaded file and choose **Extract All**.
+4. Open the extracted folder.
+
+**Option B — Using Git (if you have it):**
+
+Open Command Prompt and run:
+
+```
+git clone https://github.com/topherchris420/james_library.git
+cd james_library
+```
+
+#### Step 3 — Run the installer
+
+Double-click **`INSTALL_RAIN.cmd`** in the project folder. This will:
+
+- Create a virtual environment with all dependencies
+- Run a preflight check to make sure everything works
+- Add shortcuts to your Desktop and Start Menu
+
+Once it finishes, double-click the **"R.A.I.N. Lab Chat"** shortcut on your Desktop to start chatting.
+
+**Alternatively**, open Command Prompt in the project folder and run:
+
+```
+python bootstrap_local.py
 python rain_lab.py
 ```
 
-The interactive wizard handles first-time setup, model detection, and chat. That's all you need.
-
-For specific tasks:
-
-```bash
-python rain_lab.py --mode first-run     # guided setup
-python rain_lab.py --mode chat --topic "your research topic"
-python rain_lab.py --mode validate      # readiness check
-python rain_lab.py --mode status        # environment + runtime status
-python rain_lab.py --mode models        # detected models/providers
-```
-
-If Rust is not installed yet, core Python research flows still work.
+</details>
 
 ---
 
-## Architecture
+### macOS
+
+<details>
+<summary><strong>Click to expand macOS setup instructions</strong></summary>
+
+#### Step 1 — Install Python (if you do not have it)
+
+macOS comes with an older version of Python. You need Python 3.10 or newer.
+
+**Easiest method — use the official installer:**
+
+1. Go to [python.org/downloads/macos](https://www.python.org/downloads/macos/).
+2. Download the latest macOS installer (`.pkg` file).
+3. Double-click the file and follow the prompts.
+
+**Alternative — use Homebrew (if you already have it):**
+
+```bash
+brew install python
+```
+
+To verify it worked, open **Terminal** (search for "Terminal" in Spotlight) and type:
+
+```bash
+python3 --version
+```
+
+You should see `Python 3.10.x` or newer.
+
+#### Step 2 — Download R.A.I.N. Lab
+
+Open Terminal and run:
+
+```bash
+git clone https://github.com/topherchris420/james_library.git
+cd james_library
+```
+
+> If you do not have `git`, macOS will prompt you to install the Command Line Tools. Click **Install** and wait for it to finish, then run the commands above again.
+
+#### Step 3 — Set up and launch
+
+```bash
+python3 bootstrap_local.py
+python3 rain_lab.py
+```
+
+The interactive wizard will walk you through first-time setup and start a chat session.
+
+</details>
+
+---
+
+### Linux
+
+<details>
+<summary><strong>Click to expand Linux setup instructions</strong></summary>
+
+#### Step 1 — Install Python (if you do not have it)
+
+Most Linux distributions include Python. Check your version:
+
+```bash
+python3 --version
+```
+
+If you see `Python 3.10.x` or newer, skip to Step 2. Otherwise, install it:
+
+**Ubuntu / Debian:**
+
+```bash
+sudo apt update
+sudo apt install python3 python3-venv python3-pip git
+```
+
+**Fedora:**
+
+```bash
+sudo dnf install python3 python3-pip git
+```
+
+**Arch Linux:**
+
+```bash
+sudo pacman -S python python-pip git
+```
+
+#### Step 2 — Download R.A.I.N. Lab
+
+```bash
+git clone https://github.com/topherchris420/james_library.git
+cd james_library
+```
+
+#### Step 3 — Set up and launch
+
+```bash
+python3 bootstrap_local.py
+python3 rain_lab.py
+```
+
+The interactive wizard will walk you through first-time setup and start a chat session.
+
+</details>
+
+---
+
+## Using R.A.I.N. Lab
+
+Once installed, here are the most common things you can do:
+
+| What you want to do | Command |
+|---|---|
+| **Start chatting** (recommended first step) | `python rain_lab.py` |
+| **Guided first-time setup** | `python rain_lab.py --mode first-run` |
+| **Chat about a specific topic** | `python rain_lab.py --mode chat --topic "your research topic"` |
+| **Run a lab meeting** (multi-agent debate) | `python rain_lab.py --mode rlm` |
+| **Check if everything is working** | `python rain_lab.py --mode validate` |
+| **See detected AI models** | `python rain_lab.py --mode models` |
+| **Health check** | `python rain_lab.py --mode health` |
+
+> **Tip:** On macOS and Linux, use `python3` instead of `python` if `python` is not recognized.
+
+---
+
+## Connecting an AI Model
+
+R.A.I.N. Lab needs an AI model to power its conversations. The easiest option is **LM Studio**, which lets you run models locally on your own computer for free:
+
+1. Download [LM Studio](https://lmstudio.ai/) for your platform.
+2. Open LM Studio, search for a model (try "Mistral" or "Llama" for a good starting point), and download it.
+3. Click **Start Server** in LM Studio.
+4. Run `python rain_lab.py --mode first-run` — it will automatically detect LM Studio.
+
+You can also use cloud providers (OpenRouter, OpenAI, etc.) by adding your API key during first-run setup.
+
+---
+
+## Troubleshooting
+
+| Problem | Solution |
+|---|---|
+| `python` is not recognized | Make sure Python is installed and added to PATH. On macOS/Linux, try `python3` instead. |
+| Permission denied on macOS/Linux | Run `chmod +x scripts/bootstrap.sh` and try again. |
+| Install fails with "No module named venv" | Install the venv module: `sudo apt install python3-venv` (Ubuntu/Debian). |
+| LM Studio not detected | Make sure LM Studio's server is running (click **Start Server** in LM Studio). |
+| Something else is wrong | Run `python rain_lab.py --mode health` to see a diagnostic report. |
+
+For more help, see [docs/troubleshooting.md](docs/troubleshooting.md) or [open an issue](https://github.com/topherchris420/james_library/issues).
+
+---
+
+## How It Works Under the Hood
+
+This project ships as one product (**R.A.I.N. Lab**) built from two layers:
+
+| Layer | What it does | Language |
+|---|---|---|
+| **James Library** | Research workflows — lab meetings, synthesis, acoustic physics | Python |
+| **ZeroClaw** | Agent runtime — orchestration, tools, channels, memory, security | Rust (optional) |
+
+You interact with R.A.I.N. Lab as a single product. The Python layer handles research workflows and delegates to the Rust runtime for fast orchestration when available. **Python research flows work without Rust installed** — the Rust runtime adds speed, channels, and tool execution for advanced users.
 
 ```mermaid
 graph TB
@@ -114,17 +322,26 @@ graph TB
     Providers --> External
 ```
 
-| Component | Role | Technology |
-|-----------|------|------------|
-| ZeroClaw | Autonomous runtime, tool orchestration, provider management | Rust |
-| James Library | Research workflows, recursive reasoning, synthesis | Python |
-| Godot Client | Multi-agent visual interface | GDScript |
+---
+
+## Download Prebuilt Binaries
+
+If you prefer not to install from source, download prebuilt binaries from the [Releases page](https://github.com/topherchris420/james_library/releases). See [docs/BINARY_RELEASES.md](docs/BINARY_RELEASES.md) for supported platforms and extraction steps.
 
 ---
 
-## Developer Setup
+## For Developers
 
-**Prerequisites:** Python 3.10+ (required), Rust 1.87+ (recommended), LM Studio (recommended for local-first path).
+<details>
+<summary><strong>Click to expand developer setup and project structure</strong></summary>
+
+### Prerequisites
+
+- Python 3.10+ (required)
+- Rust 1.87+ (recommended)
+- LM Studio (recommended for local-first path)
+
+### Full Setup
 
 ```bash
 git clone https://github.com/topherchris420/james_library.git
@@ -135,43 +352,7 @@ cargo build --release --locked    # optional — Python flows work without Rust
 python rain_lab.py --mode first-run
 ```
 
-Platform-specific bootstrap scripts are also available:
-
-| Platform | Command |
-|----------|---------|
-| Linux/macOS | `bash scripts/quickstart_lmstudio.sh` |
-| Windows (PowerShell) | `powershell -ExecutionPolicy Bypass -File .\scripts\quickstart_lmstudio.ps1` |
-| Windows (one-click) | Double-click `INSTALL_RAIN.cmd` |
-
-### All Launcher Modes
-
-```bash
-python rain_lab.py --mode first-run    # guided setup
-python rain_lab.py --mode chat         # research conversation
-python rain_lab.py --mode rlm          # recursive lab meeting
-python rain_lab.py --mode validate     # readiness check
-python rain_lab.py --mode status       # environment info
-python rain_lab.py --mode models       # detected models
-python rain_lab.py --mode providers    # configured providers
-python rain_lab.py --mode health       # health snapshot
-python rain_lab.py --mode gateway      # start gateway server
-```
-
----
-
-## Download Binaries
-
-If you do not want to build from source, download prebuilt binaries from:
-
-- https://github.com/topherchris420/james_library/releases
-
-Supported release targets and extraction steps are documented in:
-
-- [docs/BINARY_RELEASES.md](docs/BINARY_RELEASES.md)
-
----
-
-## Project Structure
+### Project Structure
 
 ```text
 james_library/
@@ -193,24 +374,9 @@ james_library/
 `-- pyproject.toml            # Python lint/type/test config
 ```
 
----
+### Running Tests
 
-## Reliability Guardrails
-
-- **Repo integrity guard**: `scripts/ci/repo_integrity_guard.py`
-  - Fails if duplicate `src/src` tree appears.
-  - Fails if embedded dashboard fallback is missing (`build.rs` or `web/dist/index.html`).
-- **Embedded dashboard fallback**: `build.rs` auto-creates `web/dist/index.html` if frontend artifacts are absent.
-- **Gateway request-path hardening**:
-  - Reduced allocation pressure in static serving path.
-  - Stricter asset path validation.
-  - More efficient rate limiting and idempotency cleanup behavior.
-
----
-
-## Development
-
-### Python
+**Python:**
 
 ```bash
 pip install -r requirements-dev.txt
@@ -218,13 +384,12 @@ ruff check .
 pytest -q
 ```
 
-### Rust
+**Rust:**
 
 ```bash
 cargo fmt --all
 cargo clippy --all-targets -- -D warnings
 cargo test
-cargo check
 ```
 
 ### Benchmarks
@@ -233,9 +398,13 @@ cargo check
 cargo bench --features benchmarks --bench agent_benchmarks
 ```
 
----
+For a reproducible feature comparison against other research automation tools, see [`benchmark_data/`](benchmark_data/) and the reproduction script:
 
-## Godot Integration
+```bash
+python scripts/benchmark/reproduce_readme_benchmark.py
+```
+
+### Godot Integration
 
 ```bash
 python rain_lab.py --mode chat --ui auto --topic "your topic"
@@ -244,17 +413,19 @@ python rain_lab.py --mode chat --ui on --topic "your topic"
 
 `--ui auto` starts avatars when Godot is available and falls back to CLI when not.
 
+</details>
+
 ---
 
 ## Documentation
 
-- [ARCHITECTURE.md](ARCHITECTURE.md)
-- [PRODUCT_ROADMAP.md](PRODUCT_ROADMAP.md)
-- [CONTRIBUTING.md](CONTRIBUTING.md)
-- [SECURITY.md](SECURITY.md)
-- [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md)
-- [docs/FIRST_RUN_CHECKLIST.md](docs/FIRST_RUN_CHECKLIST.md)
-- [docs/BINARY_RELEASES.md](docs/BINARY_RELEASES.md)
+- [Architecture](ARCHITECTURE.md)
+- [Product Roadmap](PRODUCT_ROADMAP.md)
+- [Contributing Guide](CONTRIBUTING.md)
+- [Security Policy](SECURITY.md)
+- [Production Readiness](docs/PRODUCTION_READINESS.md)
+- [First Run Checklist](docs/FIRST_RUN_CHECKLIST.md)
+- [Binary Releases](docs/BINARY_RELEASES.md)
 
 ---
 
@@ -265,14 +436,6 @@ MIT License. See [LICENSE](LICENSE).
 ## Acknowledgements
 
 R.A.I.N. Lab is a [Vers3Dynamics](https://vers3dynamics.com/) project, built on the ZeroClaw runtime with inspiration from MIT CSAIL research. Huge thanks to both teams for creating such a high-performance, lightweight agent runtime that made this lab possible.
-
-## Benchmarks
-
-For a reproducible feature comparison against other research automation tools, see [`benchmark_data/`](benchmark_data/) and the reproduction script:
-
-```bash
-python scripts/benchmark/reproduce_readme_benchmark.py
-```
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=topherchris420/james_library&type=Date&theme=dark&v=1">
