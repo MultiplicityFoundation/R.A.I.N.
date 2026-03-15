@@ -1,5 +1,5 @@
 """
-R.A.I.N. LAB 
+R.A.I.N. LAB
 
 """
 
@@ -195,19 +195,19 @@ def _init_rag():
     if _rag_failed:
         return False
     if embedder is not None: return True # Already initialized
-    
+
     try:
         # --- ROBUST WINDOWS FIX FOR [WinError 1114] ---
         # 1. Force KMP override to avoid OpenMP conflicts
         os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
-        
+
         # 2. Locate and add paths
         import sys
         import site
         import ctypes
-        
+
         paths_to_add = []
-        
+
         # Find Conda Library/bin (System DLLs: msvcp140, etc)
         conda_base = os.path.dirname(sys.executable)
         conda_lib = os.path.join(conda_base, "Library", "bin")
@@ -231,7 +231,7 @@ def _init_rag():
         # Add to PATH (Prepend to ensure priority)
         if paths_to_add:
             os.environ['PATH'] = os.pathsep.join(paths_to_add) + os.pathsep + os.environ['PATH']
-            
+
         # Add to DLL Directory (Python 3.8+)
         if hasattr(os, 'add_dll_directory'):
             for p in paths_to_add:
@@ -251,17 +251,17 @@ def _init_rag():
         force_load("vcruntime140.dll", conda_lib)
         force_load("vcruntime140_1.dll", conda_lib)
         force_load("zlib.dll", conda_lib)
-        
+
         force_load("libiomp5md.dll", torch_lib)
         force_load("uv.dll", torch_lib)
         # ----------------------------------------------
 
         # Exclusive import of torch to ensure DLLs are loaded
         import torch
-        
+
         import chromadb
         from sentence_transformers import SentenceTransformer
-        
+
         print("⏳ Initializing Semantic RAG (this may take a moment)...")
         embedder = SentenceTransformer('all-MiniLM-L6-v2')
         chroma_client = chromadb.PersistentClient(path=os.path.join(LIBRARY_PATH, "chroma_db"))
@@ -282,7 +282,7 @@ def index_library():
     """Indexes all papers in the library for semantic search."""
     if not _init_rag() or not collection:
         return "RAG system not available (missing dependencies)."
-    
+
     print("📚 Indexing library...")
     count = 0
     for file_path in _get_library_files():
@@ -291,7 +291,7 @@ def index_library():
             with open(file_path, 'r', encoding='utf-8-sig', errors='ignore') as f:
                 text = f.read()
                 if not text.strip(): continue
-                
+
                 # Naive upsert
                 embedding = embedder.encode(text).tolist()
                 collection.add(
@@ -303,14 +303,14 @@ def index_library():
                 count += 1
         except Exception as e:
             print(f"Skipped {file_path}: {e}")
-            
+
     print(f"✅ Indexed {count} papers.")
     return f"Indexed {count} papers."
 
 def search_web(query):
     """Returns top search results for the query using DuckDuckGo."""
     print(f"🔎 WEB SEARCH: {query}...")
-    
+
     # 1. Check for "task" or "objective" meta-searches
     if any(x in query.lower() for x in ["task", "objective", "instruction", "what to do", "requirements"]):
         print("⚠️ Meta-search detected. Returning hint.")
@@ -322,7 +322,7 @@ def search_web(query):
             from ddgs import DDGS
         except ImportError:
             from duckduckgo_search import DDGS
-            
+
         # Use a context manager if possible, or just instantiate
         try:
             with DDGS() as ddgs:
@@ -393,7 +393,7 @@ def search_library(query):
     """Search all papers for key terms in the query (checks content AND filenames)."""
     print(f"🕵️ LIBRARY SEARCH: {query}...")
     results = []
-    
+
     # 1. Check for "task" or "objective" meta-searches
     if any(x in query.lower() for x in ["task", "objective", "instruction", "what to do"]):
         print("?????? Meta-search detected. Redirecting to list_papers().")
@@ -402,7 +402,7 @@ def search_library(query):
     # Split query into keywords (ignore small words)
     keywords = [k.lower() for k in query.split() if len(k) > 3]
     if not keywords: keywords = [query.lower()]
-    
+
     for file_path in _get_library_files():
         basename = os.path.basename(file_path)
         if basename.startswith("_"):
@@ -415,7 +415,7 @@ def search_library(query):
                 content = f.read()
                 content_lower = content.lower()
                 filename_lower = filename.lower()
-                
+
                 # Check Filename first (High priority)
                 if any(k in filename_lower for k in keywords):
                     results.append((10.0, filename, ["FILENAME MATCH"]))
@@ -428,10 +428,10 @@ def search_library(query):
                      results.append((score, filename, [k for k in keywords if k in content_lower]))
         except Exception:
             pass
-            
+
     # Sort by score
     results.sort(key=lambda x: x[0], reverse=True)
-    
+
     if results:
         output = []
         for score, filename, matches in results[:5]:
@@ -456,20 +456,20 @@ def semantic_search(query):
         return list_papers()
     if not _init_rag() or not collection:
         return "RAG unavailable; use search_library() or read_paper()."
-        
+
     print(f"🧠 SEMANTIC SEARCH: {query}...")
     try:
         embedding = embedder.encode(query).tolist()
         results = collection.query(query_embeddings=[embedding], n_results=3)
-        
+
         output = []
         if results['documents']:
             for i, doc in enumerate(results['documents'][0]):
                 source = results['metadatas'][0][i]['source']
                 snippet = doc[:2000] # Return first 2000 chars of the match
                 output.append(f"From {source}: {snippet}...")
-                
-                
+
+
         result = "\\n\\n".join(output) if output else "No semantic matches found."
         result = sanitize_text(result)
         print(result)
@@ -577,7 +577,7 @@ except BaseException as e:
     print(f"[ERROR] Setup initialization failed: {e}")
 
 # Trigger one-time index if possible?
-# For now, we trust the agent or user to call index_library() if needed, 
+# For now, we trust the agent or user to call index_library() if needed,
 # OR we just do a quick check.
 if collection and collection.count() == 0:
     print("Empty library detected. Indexing now...")
@@ -614,15 +614,15 @@ class Agent:
     color: str
     tool_instruction: str
     _soul_cache: str = field(default="", repr=False)
-    
+
     def load_soul(self, library_path: str) -> str:
         """Load soul from external .md file"""
         soul_path = Path(library_path) / f"{self.name.upper()}_SOUL.md"
-        
+
         if soul_path.exists():
             with open(soul_path, 'r', encoding='utf-8-sig') as f:
                 external_soul = f.read()
-            
+
             # RLM code execution rules
             rlm_rules = f"""
 
@@ -651,9 +651,9 @@ RULES:
             self._soul_cache = external_soul + rlm_rules
             print(f"     ✓ Soul loaded: {self.name.upper()}_SOUL.md")
             return self._soul_cache
-        
+
         raise FileNotFoundError(f"Missing SOUL file: {soul_path}")
-    
+
     @property
     def soul(self) -> str:
         return self._soul_cache if self._soul_cache else f"You are {self.name}."
@@ -704,7 +704,7 @@ SOURCE RULE: Use only local research papers + web search; do not rely on other s
 class LogManager:
     def __init__(self, log_path: str):
         self.log_path = Path(log_path)
-    
+
     def initialize(self, topic: str):
         header = f"""
 {'='*70}
@@ -717,13 +717,13 @@ MODE: Recursive Language Model - Code Execution Enabled
 
 """
         self._write(header)
-    
+
     def log(self, agent_name: str, content: str):
         self._write(f"**{agent_name}:** {content}\n\n")
-    
+
     def finalize(self):
         self._write(f"\n{'='*70}\nSESSION ENDED\n{'='*70}\n")
-    
+
     def _write(self, text: str):
         with open(self.log_path, 'a', encoding='utf-8') as f:
             f.write(text)
@@ -821,9 +821,9 @@ class ResearchCouncil:
             print("CRITICAL: DuckDuckGo client not installed.")
             print("Install one of: pip install ddgs  OR  pip install duckduckgo_search")
             sys.exit(1)
-        
+
         print("\n🔧 Initializing RLM with local tools...")
-        
+
         # Custom system prompt to override RLM defaults and enforce our tools
         custom_prompt = f"""YOU ARE FORBIDDEN FROM USING <think> TAGS.
 <think> TAGS ARE DISABLED. DO NOT USE THEM.
@@ -904,7 +904,7 @@ BEGIN EXECUTION IMMEDIATELY.
             verbose=False
         )
         print("   ✓ RLM initialized with read_paper(), read_hello_os(), and search_web()")
-    
+
     def build_prompt(self, agent: Agent, topic: str, history: List[str], turn: int) -> str:
         recent = history[-6:] if len(history) > 6 else history
         history_text = "\n".join(recent) if recent else "[Meeting just started]"
@@ -915,7 +915,7 @@ BEGIN EXECUTION IMMEDIATELY.
         must_web = self.require_web and (turn == 0) and not self.agent_web_used.get(agent.name, False)
         discussion_only = turn >= 1
         shared_only = discussion_only and bool(self.shared_sources)
-        
+
         # Compact ban block for 4B models
         banned_block = """ABSOLUTE RULES:
 - NEVER use <think> tags. Your internal reasoning is DISABLED.
@@ -937,12 +937,12 @@ BEGIN EXECUTION IMMEDIATELY.
 ONLY USE: read_paper(), read_hello_os(), search_web(), list_papers(), search_library(), semantic_search()
 FORMAT: Write a ```python``` code block, then plain text response.
 """
-        
+
         # Dynamic instruction based on meeting state
         if not history:
              # FIRST TURN: James starts the meeting
              keyword_guess = topic.split()[0] if topic else "research"
-             
+
              # Force James to open naturally
              start_instruction = f"""
 ERROR: You are writing a REPORT. Stop immediately.
@@ -987,8 +987,8 @@ MEETING MODE:
 - Focus on reacting to teammates and building consensus or debate.
 - Use conversation history and Shared sources for your SOURCE quote.
 """
-        
-        
+
+
         # Keep the history and topic
         # INJECT FULL SOUL (Personality + Rules)
         web_instruction = ""
@@ -1011,21 +1011,21 @@ Shared sources (use these for quotes during discussion turns):
 {start_instruction}
 
 {agent.name}:"""
-        
+
         return banned_block + core_prompt
-    
+
     def run(self, topic: str, max_turns: int = 16):
         print("\n" + "="*70)
         print("║" + "R.A.I.N. LAB".center(68) + "║")
         print("="*70)
         print(f"📋 Topic: {topic}\n")
         os.environ["RLM_TOPIC"] = topic
-        
+
         # Load souls
         print("🧠 Loading Agent Souls...")
         for agent in self.team:
             agent.load_soul(TARGET_PATH)
-        
+
         self.log.initialize(topic)
 
         # Initialize eval metrics tracker
@@ -1051,9 +1051,9 @@ Shared sources (use these for quotes during discussion turns):
                 except Exception:
                     pass
             self.metrics_tracker.set_corpus(corpus)
-        
+
         history: List[str] = []
-        
+
         print(f"\nMEETING STARTING ({max_turns} turns)")
         print("Press Ctrl+C to end early (after current turn)")
         if max_turns <= 0:
@@ -1064,20 +1064,20 @@ Shared sources (use these for quotes during discussion turns):
             if not self.stop_requested:
                 print("\n\nStop requested. Will end after current turn.")
             self.stop_requested = True
-        
+
         try:
             import signal
             signal.signal(signal.SIGINT, _handle_sigint)
         except Exception:  # SIGINT handler unavailable on some platforms
             pass
-        
+
         turn = 0
         while max_turns <= 0 or turn < max_turns:
             agent = self.team[turn % len(self.team)]
             tools_locked = (turn >= 1)
-                
+
             print(f"\n{agent.color}▶ {agent.name}'s turn ({agent.role})\033[0m")
-            
+
             prompt = self.build_prompt(agent, topic, history, turn)
             if not history and turn == 0:
                 if local_ctx:
@@ -1088,7 +1088,7 @@ Shared sources (use these for quotes during discussion turns):
                 print("\n" + "="*50)
                 print("🔍 Searching for Vers3Dynamics satellite...")
                 print("="*50)
-    
+
                 # Timeout-protected call (retry once with shorter prompt)
                 turn_model_calls = 0
                 def _call_model(p: str):
@@ -1146,24 +1146,24 @@ Shared sources (use these for quotes during discussion turns):
                                     raw_response = response
                             except concurrent.futures.TimeoutError:
                                 pass
-    
+
                 # Clean up any thinking tags or artifacts
 
                 import re
                 response = re.sub(r'<think>.*?</think>', '', response, flags=re.DOTALL|re.IGNORECASE)
                 response = re.sub(r'<think>.*', '', response, flags=re.DOTALL|re.IGNORECASE)
                 response = re.sub(r'~\d+ words', '', response)  # Remove word counts
-                    
+
                 # Strip hallucinated function calls that don't exist
                 response = re.sub(r'FINAL_VAR\s*\([^)]*\)', '', response)
                 response = re.sub(r'FINAL\s*\([^)]*\)', '', response)
                 response = re.sub(r'llm_query\s*\([^)]*\)', '[USE read_paper() INSTEAD]', response)
                 response = re.sub(r'SHOW_VARS\s*\([^)]*\)', '', response)
-                    
+
                 # Clean up any leftover empty code blocks
                 response = re.sub(r'```repl\s*```', '', response)
                 response = re.sub(r'```python\s*```', '', response)
-                    
+
                 # Track whether the agent actually used web search
                 if "search_web" in raw_response:
                     self.agent_web_used[agent.name] = True
@@ -1236,7 +1236,7 @@ Shared sources (use these for quotes during discussion turns):
                         if saw_non_pref:
                             forced = "\\n".join([f"read_paper(\\\"{n}\\\")" for n in selected_names])
                             response = "```python\\n" + forced + "\\n```\\n" + f"Hey team, so today we're talking about '{topic}'. I found relevant excerpts in the library. What are your thoughts?"
-                    
+
                     # Clean prefix if present
                     if response.startswith(f"{agent.name}:"):
                         response = response[len(f"{agent.name}:"):].strip()
@@ -1334,7 +1334,7 @@ Shared sources (use these for quotes during discussion turns):
                     opener = f"Hey team, so today we're talking about '{topic}'."
                     if not response.lower().startswith("hey team"):
                         response = f"{opener} {response}".strip()
-                
+
                 # Validate meeting style (last speaker mention + question + source snippet)
                 if history:
                     last_message = history[-1]
@@ -1374,23 +1374,23 @@ Shared sources (use these for quotes during discussion turns):
                                 pass
 
                 print(f"\n{agent.color}{agent.name}: {response}\033[0m")
-                    
+
                 self.log.log(agent.name, response)
                 history.append(f"{agent.name}: {response}")
 
                 # Record eval metrics for this turn
                 if self.metrics_tracker is not None:
                     self.metrics_tracker.record_turn(agent.name, response)
-                    
+
             except Exception as e:
                 print(f"⚠️ Error: {e}")
                 history.append(f"{agent.name}: [Error - skipped]")
-                
+
             if self.stop_requested:
                 break
             turn += 1
             time.sleep(0.5)
-        
+
         # Finalize eval metrics
         if self.metrics_tracker is not None:
             record = self.metrics_tracker.finalize()
@@ -1408,7 +1408,7 @@ Shared sources (use these for quotes during discussion turns):
 # =============================================================================
 if __name__ == "__main__":
     import argparse
-    
+
     parser = argparse.ArgumentParser(description="R.A.I.N. Lab")
     parser.add_argument("--topic", type=str, default=None, help="Meeting topic")
     parser.add_argument("topic_words", nargs="*", help="Meeting topic (positional)")
@@ -1419,9 +1419,9 @@ if __name__ == "__main__":
     parser.add_argument("--no-recursive-intellect", action="store_true", help="Compatibility flag (ignored in RLM mode)")
     parser.add_argument("--no-web", action="store_true", help="Disable required web search")
     parser.add_argument("--require-web", action="store_true", help="Require web search (default)")
-    
+
     args, unknown = parser.parse_known_args()
-    
+
     # Configure web requirement (default: require)
     require_web = True
     if args.no_web:
@@ -1446,7 +1446,7 @@ if __name__ == "__main__":
         topic = input("\n📋 What should we talk about?: ").strip()
         if not topic:
             topic = "Open research discussion"
-    
+
     try:
         print("Starting Research team meeting...")
         council = ResearchCouncil()

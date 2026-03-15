@@ -107,13 +107,13 @@ def file_finding(title, hypothesis, coherence):
 # --- MAIN LOOP ---
 def start_lab():
     lib_path = get_library_path()
-    
+
     # --- CLEAN OUTPUT HERE ---
     print(f"\n⚡ {EMPLOYEE_ID}", flush=True)
-    
+
     print(f"📚 Knowledge Base: {lib_path}", flush=True)
     print(f"🧠 Memory: ENABLED", flush=True)
-    
+
     soul = load_file(SOUL_FILE, "You are a Scientist at Vers3Dynamics.")
 
     tools = [
@@ -131,9 +131,9 @@ def start_lab():
                 "name": "file_finding",
                 "description": "File a finding.",
                 "parameters": {
-                    "type": "object", 
+                    "type": "object",
                     "properties": {
-                        "title": {"type": "string"}, 
+                        "title": {"type": "string"},
                         "hypothesis": {"type": "string"},
                         "coherence": {"type": "integer"}
                     },
@@ -146,7 +146,7 @@ def start_lab():
     while True:
         try:
             print(f"\n{'='*60}", flush=True)
-            
+
             # 1. LOAD PAPER
             paper_name, paper_content = read_theory_context()
             print(f"🧠 [CONTEXT] Analyzing: {paper_name}", flush=True)
@@ -186,7 +186,7 @@ CRITICAL: KEEP YOUR ANALYSIS SHORT (UNDER 100 WORDS).
                 )
                 msg = response.choices[0].message
                 messages.append(msg)
-                
+
                 if msg.tool_calls:
                     for tc in msg.tool_calls:
                         fname = tc.function.name

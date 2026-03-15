@@ -22,7 +22,7 @@ EMPLOYEE_ID = "R.A.I.N. Unit-01"
 LAB_NOTEBOOK = "VERS3_INTERNAL_LOGS.md"
 KNOWLEDGE_BASE_FILE = "VERS3_KNOWLEDGE.txt"
 MODEL = "qwen2.5-coder"
-SHIFT_INTERVAL = 15 
+SHIFT_INTERVAL = 15
 
 # --- CONNECT TO OLLAMA ---
 try:
@@ -47,10 +47,10 @@ def load_knowledge_base():
 def file_internal_memo(subject, body, novelty_score):
     """Files a formal memo. Novelty Score (1-10) determines urgency."""
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
+
     # Add a visual indicator for high-value findings
     alert = "🚨 HIGH PRIORITY CLAIM" if novelty_score > 8 else "ROUTINE UPDATE"
-    
+
     memo_format = f"""
 ===================================================================
 VERS3DYNAMICS | RESEARCH MEMO | {alert}
@@ -72,7 +72,7 @@ NOVELTY: {novelty_score}/10
 def search_online_database(query):
     """Checks the web for conflicts."""
     print(f"🌍 Checking global research for: '{query}'...")
-    
+
     if HAS_SEARCH:
         try:
             results = DDGS().text(query, max_results=3)
@@ -91,11 +91,11 @@ def search_online_database(query):
             "528": "Solfeggio frequency, extensively documented",
             "256": "Scientific pitch standard, well-known"
         }
-        
+
         for freq, description in common_frequencies.items():
             if freq in query:
                 return f"EXTERNAL MATCHES:\n- {description}"
-        
+
         return "No matching external research found (Possibility of Unique Art)."
 
 # --- MAIN LOOP ---
@@ -103,8 +103,8 @@ def start_shift():
     print(f"🏢 {EMPLOYEE_ID} is reading the {COMPANY_NAME} Knowledge Base...")
     internal_knowledge = load_knowledge_base()
     print("✅ Knowledge loaded. Ready to differentiate unique work.")
-    
-    recent_memos = [] 
+
+    recent_memos = []
     shift_cycle = 0
 
     while True:
@@ -113,18 +113,18 @@ def start_shift():
             print(f"\n{'='*70}")
             print(f"--- Cycle #{shift_cycle} ---")
             print('='*70)
-            
+
             # Simulate Data (Drifting Frequency + Harmonics)
             hz = round(432 + random.uniform(-10, 10), 2)
             harmonic = round(hz * 1.5, 2) # Perfect Fifth
             signal = {
-                "primary_frequency": hz, 
+                "primary_frequency": hz,
                 "secondary_harmonic": harmonic,
                 "coherence_stability": round(random.uniform(0.80, 0.99), 2)
             }
-            
+
             print(f"📊 Sensor Data: {json.dumps(signal, indent=2)}")
-            
+
             # MEMORY INJECTION
             memory_text = "\n".join(recent_memos[-2:]) if recent_memos else "No recent actions."
 
@@ -137,7 +137,7 @@ YOUR KNOWLEDGE BASE (Our Existing Work):
 
 PROTOCOL:
 1. Analyze the New Sensor Data.
-2. CROSS-REFERENCE with the Knowledge Base. 
+2. CROSS-REFERENCE with the Knowledge Base.
    - If it matches our existing projects, it is 'Validation' (Low Novelty).
    - If it is new to us, proceed to step 3.
 3. SEARCH ONLINE using the tool.
@@ -184,7 +184,7 @@ PROTOCOL:
                 )
 
                 messages.append({"role": "assistant", "content": response.content})
-                
+
                 if response.content:
                     for block in response.content:
                         if block.type == 'text':
@@ -195,16 +195,16 @@ PROTOCOL:
                             elif block.name == "file_internal_memo":
                                 res = file_internal_memo(block.input['subject'], block.input['body'], block.input['novelty_score'])
                                 recent_memos.append(f"Filed: {block.input['subject']}")
-                                tool_executed = True 
-                            
+                                tool_executed = True
+
                             messages.append({
                                 "role": "user",
                                 "content": [{"type": "tool_result", "tool_use_id": block.id, "content": str(res)}]
                             })
 
-                if tool_executed: 
+                if tool_executed:
                     break
-            
+
             print(f"\n⏳ Waiting {SHIFT_INTERVAL} seconds until next cycle...")
             time.sleep(SHIFT_INTERVAL)
 

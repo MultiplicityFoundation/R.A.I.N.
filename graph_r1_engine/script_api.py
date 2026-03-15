@@ -43,7 +43,7 @@ with open(f"expr/{data_source}/kv_store_hyperedges.json") as f:
 print("[DEBUG] EMBEDDINGS LOADED")
 
 rag = GraphR1(
-    working_dir=f"expr/{data_source}",  
+    working_dir=f"expr/{data_source}",
 )
 
 async def process_query(query_text, rag_instance, entity_match, hyperedge_match):
@@ -60,20 +60,20 @@ def always_get_an_event_loop() -> asyncio.AbstractEventLoop:
 
 def _format_results(results: List, corpus) -> str:
     results_list = []
-    
+
     for i, result in enumerate(results):
         results_list.append(corpus[result])
-    
+
     return results_list
 
 def queries_to_results(queries: List[str]) -> List[str]:
-    
+
     embeddings = model.encode_queries(queries)
     _, ids = index_entity.search(embeddings, 5)  # 每个查询返回 5 个结果
     entity_match = {queries[i]:_format_results(ids[i], corpus_entity) for i in range(len(ids))}
     _, ids = index_hyperedge.search(embeddings, 5)  # 每个查询返回 5 个结果
     hyperedge_match = {queries[i]:_format_results(ids[i], corpus_hyperedge) for i in range(len(ids))}
-    
+
     results = []
     loop = always_get_an_event_loop()
     for query_text in tqdm(queries, desc="Processing queries", unit="query"):

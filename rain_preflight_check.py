@@ -98,7 +98,7 @@ if research_papers:
         print(f"  • {os.path.basename(paper)}")
     if len(research_papers) > 5:
         print(f"  • ... and {len(research_papers) - 5} more")
-    
+
     # Check specifically for Guarino papers
     guarino_papers = [p for p in research_papers if "guarino" in p.lower()]
     if guarino_papers:
@@ -183,15 +183,15 @@ print(f"\n{BOLD}[6/7] Checking LM Studio API...{RESET}")
 try:
     import requests
     import json
-    
+
     api_url = "http://127.0.0.1:1234/v1/models"
-    
+
     try:
         response = requests.get(api_url, timeout=5)
-        
+
         if response.status_code == 200:
             print_success("LM Studio API is running")
-            
+
             try:
                 data = response.json()
                 if "data" in data and len(data["data"]) > 0:
@@ -205,12 +205,12 @@ try:
         else:
             print_error(f"LM Studio API returned status {response.status_code}")
             all_checks_passed = False
-    
+
     except requests.exceptions.ConnectionError:
         print_error("Cannot connect to LM Studio at http://127.0.0.1:1234")
         print_info("Start LM Studio and ensure it's running on port 1234")
         all_checks_passed = False
-    
+
     except requests.exceptions.Timeout:
         print_error("LM Studio API request timed out")
         all_checks_passed = False

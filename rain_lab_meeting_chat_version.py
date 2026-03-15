@@ -2,7 +2,7 @@
 
 R.A.I.N. LAB - RESEARCH
 
- 
+
 
 
 
@@ -496,7 +496,7 @@ class Config:
 
     recursive_depth: int = int(os.environ.get("RAIN_RECURSIVE_DEPTH", "1"))
 
-    
+
 
     # File Settings
 
@@ -504,7 +504,7 @@ class Config:
 
     meeting_log: str = "RAIN_LAB_MEETING_LOG.md"
 
-    
+
 
     # Conversation Settings
 
@@ -514,7 +514,7 @@ class Config:
 
     recent_history_window: int = 2  # Reduced for speed - less context per call
 
-    
+
 
     # Context Settings - EXPANDED FOR DEEPER PAPER ANALYSIS
 
@@ -528,7 +528,7 @@ class Config:
 
     library_exclude_dirs: Tuple[str, ...] = DEFAULT_LIBRARY_EXCLUDE_DIRS
 
-    
+
 
     # Citation Tracking
 
@@ -536,7 +536,7 @@ class Config:
 
     require_quotes: bool = True
 
-    
+
 
     # Web Search Settings
 
@@ -544,7 +544,7 @@ class Config:
 
     web_search_results: int = 3     # Number of search results per query
 
-    
+
 
     # Output Settings
 
@@ -595,7 +595,7 @@ class Agent:
 
     _soul_cache: str = field(default="", repr=False)  # Cached soul content
 
-    
+
 
     def load_soul(self, library_path: str, verbose: bool = False) -> str:
 
@@ -605,7 +605,7 @@ class Agent:
 
         soul_path = Path(library_path) / soul_filename
 
-        
+
 
         if soul_path.exists():
 
@@ -655,7 +655,7 @@ class Agent:
 
                 print(f"     ⚠️ No soul file found: {soul_filename} (using default)")
 
-        
+
 
         # Fallback to generated soul
 
@@ -663,7 +663,7 @@ class Agent:
 
         return self._soul_cache
 
-    
+
 
     def _generated_soul(self) -> str:
 
@@ -717,7 +717,7 @@ SCIENTIFIC FOCUS: {self.focus}
 
 """
 
-    
+
 
     @property
 
@@ -739,7 +739,7 @@ class RainLabAgentFactory:
 
     """Factory for creating the Physics Research Team"""
 
-    
+
 
     @staticmethod
 
@@ -765,7 +765,7 @@ class RainLabAgentFactory:
 
             ),
 
-            
+
 
             Agent(
 
@@ -785,7 +785,7 @@ class RainLabAgentFactory:
 
             ),
 
-            
+
 
             Agent(
 
@@ -805,7 +805,7 @@ class RainLabAgentFactory:
 
             ),
 
-            
+
 
             Agent(
 
@@ -837,7 +837,7 @@ class ContextManager:
 
     """Reads and manages research paper context - FULL PAPER MODE"""
 
-    
+
 
     def __init__(self, config: Config):
 
@@ -855,7 +855,7 @@ class ContextManager:
 
         self.paper_list: List[str] = []
 
-    
+
 
     def _discover_files(self) -> List[Path]:
 
@@ -1037,7 +1037,7 @@ class ContextManager:
 
             print(f"\n📂 Accessing Research Library at: {self.lab_path}")
 
-        
+
 
         if not self.lab_path.exists():
 
@@ -1045,11 +1045,11 @@ class ContextManager:
 
             return "Library not accessible.", []
 
-        
+
 
         buffer = []
 
-        
+
 
         # Load all valid text files (recursive by default)
 
@@ -1063,7 +1063,7 @@ class ContextManager:
 
             print(f"   • Scan mode: {scope}; files discovered: {len(all_files)}")
 
-        
+
 
         if not all_files:
 
@@ -1077,7 +1077,7 @@ class ContextManager:
 
             print(f"   ✓ Found {len(all_files)} papers.\n")
 
-        
+
 
         total_chars = 0
 
@@ -1085,7 +1085,7 @@ class ContextManager:
 
         index_parts = []
 
-        
+
 
         for filepath in all_files:
 
@@ -1095,7 +1095,7 @@ class ContextManager:
 
                     content = f.read()
 
-                    
+
 
                     # Store FULL content for citation verification
 
@@ -1117,13 +1117,13 @@ class ContextManager:
 
                     current_offset += len(content_lower) + 1  # +1 for delimiter
 
-                    
+
 
                     # Include full paper up to snippet length (25k = essentially full)
 
                     remaining_budget = self.config.total_context_length - total_chars
 
-                    
+
 
                     if remaining_budget > 1000:
 
@@ -1137,7 +1137,7 @@ class ContextManager:
 
                         total_chars += to_include
 
-                        
+
 
                         # Show what percentage of paper was loaded
 
@@ -1153,7 +1153,7 @@ class ContextManager:
 
                             print(f"     ⚠ Skipped {paper_ref} (budget exhausted)")
 
-                    
+
 
             except Exception as e:
 
@@ -1163,7 +1163,7 @@ class ContextManager:
 
                 continue
 
-        
+
 
         # Finalize global index
 
@@ -1175,7 +1175,7 @@ class ContextManager:
 
         combined = "\n".join(buffer)
 
-        
+
 
         if verbose:
 
@@ -1183,11 +1183,11 @@ class ContextManager:
 
             print(f"   📊 Papers with full coverage: {len([p for p in self.loaded_papers.keys()])}")
 
-        
+
 
         return combined, self.paper_list
 
-    
+
 
     def verify_citation(self, quote: str, fuzzy: bool = True) -> Optional[str]:
 
@@ -1195,7 +1195,7 @@ class ContextManager:
 
         quote_clean = quote.strip().lower()
 
-        
+
 
         # Skip very short quotes
 
@@ -1203,7 +1203,7 @@ class ContextManager:
 
             return None
 
-        
+
 
         windows_to_check = []
 
@@ -1271,7 +1271,7 @@ class ContextManager:
 
                 return self.context_offsets[paper_idx][1]
 
-        
+
 
         return None
 
@@ -1285,7 +1285,7 @@ class WebSearchManager:
 
     """Handles DuckDuckGo web searches for supplementary research context"""
 
-    
+
 
     def __init__(self, config: Config):
 
@@ -1299,7 +1299,7 @@ class WebSearchManager:
 
         self.retry_delay = 2.0  # seconds between retries
 
-    
+
 
     def search(self, query: str, verbose: bool = False) -> Tuple[str, List[Dict]]:
 
@@ -1315,7 +1315,7 @@ class WebSearchManager:
 
             return "", []
 
-        
+
 
         # Check cache
 
@@ -1327,13 +1327,13 @@ class WebSearchManager:
 
             return self._format_results(self.search_cache[query]), self.search_cache[query]
 
-        
+
 
         if verbose:
 
             print(f"\n🌐 Searching web for: '{query}'...")
 
-        
+
 
         # Retry loop with exponential backoff
 
@@ -1343,7 +1343,7 @@ class WebSearchManager:
 
                 results = []
 
-                
+
 
                 # Suppress any deprecation warnings during search
 
@@ -1365,11 +1365,11 @@ class WebSearchManager:
 
                             })
 
-                
+
 
                 self.search_cache[query] = results
 
-                
+
 
                 if results:
 
@@ -1409,13 +1409,13 @@ class WebSearchManager:
 
                         return "", []
 
-                    
+
 
             except Exception as e:
 
                 error_msg = str(e).lower()
 
-                
+
 
                 # Identify specific error types for better messaging
 
@@ -1435,7 +1435,7 @@ class WebSearchManager:
 
                     reason = str(e)
 
-                
+
 
                 if attempt < self.max_retries - 1:
 
@@ -1457,11 +1457,11 @@ class WebSearchManager:
 
                     return "", []
 
-        
+
 
         return "", []
 
-    
+
 
     def _sanitize_text(self, text: str) -> str:
 
@@ -1479,7 +1479,7 @@ class WebSearchManager:
 
             return ""
 
-        
+
 
         formatted = ["\n### WEB SEARCH RESULTS (cite as [from web: title])"]
 
@@ -1497,7 +1497,7 @@ class WebSearchManager:
 
             formatted.append(f"Source: {r.get('href', '')}\n")
 
-        
+
 
         return "\n".join(formatted)
 
@@ -1511,7 +1511,7 @@ class CitationAnalyzer:
 
     """Tracks and verifies citations in agent responses"""
 
-    
+
 
     def __init__(self, context_manager: ContextManager):
 
@@ -1521,7 +1521,7 @@ class CitationAnalyzer:
 
         self.verified_quotes = 0
 
-    
+
 
     def extract_quotes(self, text: str) -> List[str]:
 
@@ -1535,7 +1535,7 @@ class CitationAnalyzer:
 
         return [q for q in quotes if len(q.split()) > 3]  # Only meaningful quotes
 
-    
+
 
     def analyze_response(self, agent_name: str, response: str) -> Dict[str, any]:
 
@@ -1545,13 +1545,13 @@ class CitationAnalyzer:
 
         self.total_quotes_found += len(quotes)
 
-        
+
 
         verified = []
 
         unverified = []
 
-        
+
 
         for quote in quotes:
 
@@ -1567,11 +1567,11 @@ class CitationAnalyzer:
 
                 unverified.append(quote)
 
-        
+
 
         has_speculation = "[SPECULATION]" in response.upper() or "[THEORY]" in response.upper()
 
-        
+
 
         return {
 
@@ -1587,7 +1587,7 @@ class CitationAnalyzer:
 
         }
 
-    
+
 
     def get_stats(self) -> str:
 
@@ -1597,7 +1597,7 @@ class CitationAnalyzer:
 
             return "No quotes analyzed yet."
 
-        
+
 
         rate = (self.verified_quotes / self.total_quotes_found) * 100
 
@@ -1613,7 +1613,7 @@ class RainLabDirector:
 
     """Directs agents with dynamic, citation-focused instructions"""
 
-    
+
 
     def __init__(self, config: Config, paper_list: List[str]):
 
@@ -1621,13 +1621,13 @@ class RainLabDirector:
 
         self.paper_list = paper_list
 
-    
+
 
     def get_dynamic_instruction(self, agent: Agent, turn_count: int, topic: str) -> str:
 
         """Generate instructions that force citation"""
 
-        
+
 
         # Opening move
 
@@ -1647,7 +1647,7 @@ class RainLabDirector:
 
                 return f"Focus specifically on '{random_paper}'. What does it say about '{topic}'? Quote directly."
 
-        
+
 
         # Research-Specific Instructions
 
@@ -1703,13 +1703,13 @@ class RainLabDirector:
 
         }
 
-        
+
 
         if agent.name in instructions:
 
             return random.choice(instructions[agent.name])
 
-        
+
 
         return f"Analyze '{topic}' strictly from the research papers. Quote your sources."
 
@@ -1723,13 +1723,13 @@ class LogManager:
 
     """Handles meeting transcription with metadata and log rotation"""
 
-    
+
 
     # Maximum log size before auto-rotation (150KB)
 
     MAX_LOG_SIZE_BYTES = 150_000
 
-    
+
 
     def __init__(self, config: Config):
 
@@ -1739,13 +1739,13 @@ class LogManager:
 
         self.archive_dir = Path(config.library_path) / "meeting_archives"
 
-        
+
 
         # Check if rotation needed on startup
 
         self._check_and_rotate()
 
-    
+
 
     def _check_and_rotate(self):
 
@@ -1755,7 +1755,7 @@ class LogManager:
 
             return
 
-        
+
 
         try:
 
@@ -1769,7 +1769,7 @@ class LogManager:
 
             print(f"⚠️  Log rotation check failed: {e}")
 
-    
+
 
     def _rotate_log(self):
 
@@ -1781,7 +1781,7 @@ class LogManager:
 
             self.archive_dir.mkdir(exist_ok=True)
 
-            
+
 
             # Generate archive filename with timestamp
 
@@ -1791,7 +1791,7 @@ class LogManager:
 
             archive_path = self.archive_dir / archive_name
 
-            
+
 
             # Move current log to archive
 
@@ -1799,19 +1799,19 @@ class LogManager:
 
             shutil.move(str(self.log_path), str(archive_path))
 
-            
+
 
             print(f"📁 Log rotated to: {archive_path.name}")
 
             print(f"   Old log archived ({archive_path.stat().st_size // 1024}KB)")
 
-            
+
 
         except Exception as e:
 
             print(f"⚠️  Log rotation failed: {e}")
 
-    
+
 
     def archive_now(self):
 
@@ -1827,7 +1827,7 @@ class LogManager:
 
             print("ℹ️  No log to archive")
 
-    
+
 
     def initialize_log(self, topic: str, paper_count: int):
 
@@ -1859,7 +1859,7 @@ MODE: GENIUS
 
         self._append_to_log(header)
 
-    
+
 
     def log_statement(self, agent_name: str, content: str, metadata: Optional[Dict] = None):
 
@@ -1867,7 +1867,7 @@ MODE: GENIUS
 
         entry = f"**{agent_name}:** {content}\n"
 
-        
+
 
         if metadata and metadata.get('verified'):
 
@@ -1879,13 +1879,13 @@ MODE: GENIUS
 
                 entry += f"      • \"{quote[:50]}...\" [from {source}]\n"
 
-        
+
 
         entry += "\n"
 
         self._append_to_log(entry)
 
-    
+
 
     def finalize_log(self, stats: str):
 
@@ -1903,7 +1903,7 @@ SESSION ENDED
 
         self._append_to_log(footer)
 
-    
+
 
     def _append_to_log(self, text: str):
 
@@ -2101,7 +2101,7 @@ class RainLabOrchestrator:
 
     """Main orchestrator with enhanced citation tracking and error handling"""
 
-    
+
 
     def __init__(self, config: Config):
 
@@ -2113,7 +2113,7 @@ class RainLabOrchestrator:
 
         self.log_manager = LogManager(config)
 
-        
+
 
         # Will be initialized after context loading
 
@@ -2138,7 +2138,7 @@ class RainLabOrchestrator:
 
         self.hypergraph_manager.build()
 
-        
+
 
         self.rust_daemon_client: Optional[RustDaemonClient] = None
 
@@ -2178,7 +2178,7 @@ class RainLabOrchestrator:
 
                 self.client = openai.OpenAI(
 
-                    base_url=config.base_url, 
+                    base_url=config.base_url,
 
                     api_key=config.api_key,
 
@@ -2276,7 +2276,7 @@ class RainLabOrchestrator:
 
             return ""
 
-    
+
 
     def test_connection(self) -> bool:
 
@@ -2284,7 +2284,7 @@ class RainLabOrchestrator:
 
         print(f"\n🔌 Testing connection to blacksite at {self.config.base_url}...")
 
-        
+
 
         for attempt in range(3):
 
@@ -2334,7 +2334,7 @@ class RainLabOrchestrator:
 
                     time.sleep(2)
 
-        
+
 
         return False
 
@@ -2362,13 +2362,13 @@ class RainLabOrchestrator:
 
         print(f"\r{color}✓ {label}\033[0m{' ' * 18}")
 
-    
+
 
     def run_meeting(self, topic: str):
 
         """Run the research meeting"""
 
-        
+
 
         # UTF-8 setup
 
@@ -2382,7 +2382,7 @@ class RainLabOrchestrator:
 
                 pass
 
-        
+
 
         # Header - 3D block ASCII Banner
 
@@ -2400,7 +2400,7 @@ class RainLabOrchestrator:
 
         print(f"📋 Topic: {topic}")
 
-        
+
 
         # Test connection
 
@@ -2408,7 +2408,7 @@ class RainLabOrchestrator:
 
             return
 
-        
+
 
         # Load context
 
@@ -2438,7 +2438,7 @@ class RainLabOrchestrator:
 
                 print(f"\r\033[K\033[91m✗\033[0m No papers found.")
 
-        
+
 
         if not paper_list:
 
@@ -2446,7 +2446,7 @@ class RainLabOrchestrator:
 
             return
 
-        
+
 
         # Initialize components that need context
 
@@ -2476,7 +2476,7 @@ class RainLabOrchestrator:
 
             self.metrics_tracker.set_corpus(self.context_manager.loaded_papers)
 
-        
+
 
         # Load agent souls from external files
 
@@ -2500,7 +2500,7 @@ class RainLabOrchestrator:
 
             print(f"\r\033[K\033[92m✓\033[0m Agents ready")
 
-        
+
 
         # Perform web search for supplementary context
 
@@ -2530,7 +2530,7 @@ class RainLabOrchestrator:
 
             print("   Install with: pip install duckduckgo-search\n")
 
-        
+
 
         # Combine contexts
 
@@ -2540,7 +2540,7 @@ class RainLabOrchestrator:
 
             full_context = context_block + "\n\n" + web_context
 
-        
+
 
         # Store for use in agent responses
 
@@ -2554,14 +2554,14 @@ class RainLabOrchestrator:
 
             self.full_context += "\n### PREVIOUS MEETING CONTEXT\n" + previous_meeting_summary
 
-        
+
 
         # Initialize log
 
         self.log_manager.initialize_log(topic, len(paper_list))
         self._start_visual_conversation(topic)
 
-        
+
 
         # Meeting setup
 
@@ -2569,7 +2569,7 @@ class RainLabOrchestrator:
 
         turn_count = 0
 
-        
+
 
         print(f"\n🚀 TEAM MEETING")
 
@@ -2581,7 +2581,7 @@ class RainLabOrchestrator:
 
         print("="*70 + "\n")
 
-        
+
 
         # Track wrap-up phase
 
@@ -2589,7 +2589,7 @@ class RainLabOrchestrator:
 
         wrap_up_complete = False
 
-        
+
 
         # --- AUTONOMOUS LOOP WITH MANUAL INTERVENTION ---
 
@@ -2597,7 +2597,7 @@ class RainLabOrchestrator:
 
         wrap_up_start_turn = self.config.max_turns - self.config.wrap_up_turns
 
-        
+
 
         while turn_count < self.config.max_turns:
 
@@ -2623,11 +2623,11 @@ class RainLabOrchestrator:
 
                 print("="*70 + "\n")
 
-            
+
 
             current_agent = self.team[turn_count % len(self.team)]
 
-            
+
 
             # Check for user intervention with Windows-compatible key detection
 
@@ -2637,7 +2637,7 @@ class RainLabOrchestrator:
 
             print("\033[90m   [Press ENTER to speak, or wait...]\033[0m", end='', flush=True)
 
-            
+
 
             # Cross-platform: check for keypress during brief window
 
@@ -2677,11 +2677,11 @@ class RainLabOrchestrator:
 
                 time.sleep(0.05)  # Small sleep to prevent CPU spinning
 
-            
+
 
             print("\r" + " " * 50 + "\r", end='')  # Clear the "Press ENTER" prompt
 
-            
+
 
             # Handle user intervention
 
@@ -2728,19 +2728,19 @@ class RainLabOrchestrator:
 
                         break
 
-            
+
 
             # 2. Generate Response
 
             response, metadata = self._generate_agent_response(
 
-                current_agent, 
+                current_agent,
 
-                self.full_context, 
+                self.full_context,
 
-                history_log, 
+                history_log,
 
-                turn_count, 
+                turn_count,
 
                 topic,
 
@@ -2748,7 +2748,7 @@ class RainLabOrchestrator:
 
             )
 
-            
+
 
             if response is None:
 
@@ -2756,7 +2756,7 @@ class RainLabOrchestrator:
 
                 break
 
-            
+
 
             # 3. Analyze Citations
 
@@ -2764,7 +2764,7 @@ class RainLabOrchestrator:
 
                 citation_analysis = self.citation_analyzer.analyze_response(
 
-                    current_agent.name, 
+                    current_agent.name,
 
                     response
 
@@ -2774,7 +2774,7 @@ class RainLabOrchestrator:
 
                 current_agent.citations_made += len(citation_analysis['verified'])
 
-            
+
 
             # 4. Output - Clean up any duplicate name prefixes from the response
 
@@ -2849,7 +2849,7 @@ class RainLabOrchestrator:
 
                         self.full_context += f"\n\n### LIVE WEB SEARCH\nQuery: {query}\n{web_note}"
 
-            
+
 
             # Show citation feedback
 
@@ -2861,7 +2861,7 @@ class RainLabOrchestrator:
 
                     print(f"\033[90m      • \"{quote[:60]}...\" [from {source}]\033[0m")
 
-            
+
 
             # 5. Log
 
@@ -2881,11 +2881,11 @@ class RainLabOrchestrator:
 
                 )
 
-            
+
 
             turn_count += 1
 
-        
+
 
         # Meeting officially closed
 
@@ -2899,7 +2899,7 @@ class RainLabOrchestrator:
 
         self.log_manager.log_statement("James", "Meeting adjourned. Great discussion everyone!")
 
-        
+
 
         # Finalize
 
@@ -2912,7 +2912,7 @@ class RainLabOrchestrator:
         self.log_manager.finalize_log(stats)
         self._end_visual_conversation()
 
-        
+
 
         print("\n" + "="*70)
 
@@ -2974,15 +2974,15 @@ class RainLabOrchestrator:
 
     def _generate_agent_response(
 
-        self, 
+        self,
 
-        agent: Agent, 
+        agent: Agent,
 
-        context_block: str, 
+        context_block: str,
 
-        history_log: List[str], 
+        history_log: List[str],
 
-        turn_count: int, 
+        turn_count: int,
 
         topic: str,
 
@@ -2992,11 +2992,11 @@ class RainLabOrchestrator:
 
         """Generate agent response with robust error handling and retries"""
 
-        
+
 
         recent_chat = "\n".join(history_log[-self.config.recent_history_window:]) if history_log else "[Meeting Start]"
 
-        
+
 
         # Use wrap-up instructions or normal mission
 
@@ -3008,7 +3008,7 @@ class RainLabOrchestrator:
 
             mission = self.director.get_dynamic_instruction(agent, turn_count, topic)
 
-        
+
 
         # Get previous speaker for conversational context
 
@@ -3022,7 +3022,7 @@ class RainLabOrchestrator:
 
                 prev_speaker = last_entry.split(":")[0].strip()
 
-        
+
 
         # ENHANCED PROMPT - CONVERSATIONAL TEAM MEETING STYLE
 
@@ -3044,7 +3044,7 @@ CONVERSATIONAL CONTEXT:
 
 """
 
-        
+
 
         prompt = f"""### SHARED RESEARCH DATABASE (YOUR ONLY FACTUAL SOURCE)
 
@@ -3092,7 +3092,7 @@ CRITICAL RULES:
 
         self._animate_spinner(f"{agent.name} analyzing", duration=1.0, color=agent.color)
 
-        
+
 
         # RETRY LOGIC
 
@@ -3138,7 +3138,7 @@ CRITICAL RULES:
 
 - Extend their idea in a new direction"""
 
-                    
+
 
                     user_msg = f"""LIVE TEAM MEETING - Your turn to speak.
 
@@ -3381,7 +3381,7 @@ Use these links to propose creative cross-paper insights if relevant.
 
                             )
 
-                
+
 
                 # Clean up response - remove agent speaking as self
 
@@ -3389,7 +3389,7 @@ Use these links to propose creative cross-paper insights if relevant.
 
                     content = content.replace(f"{agent.name}:", "", 1).strip()
 
-                
+
 
                 # Remove lines where agent speaks as OTHER team members (identity confusion)
 
@@ -3417,14 +3417,14 @@ Use these links to propose creative cross-paper insights if relevant.
 
                 content = '\n'.join(cleaned_lines).strip()
 
-                
+
 
                 # Check if response was truncated (doesn't end with sentence-ending punctuation)
 
 
                 is_truncated = finish_reason == "length" or (
 
-                    content and 
+                    content and
 
                     not content.endswith(('.', '!', '?', '"', "'", ')')) and
 
@@ -3432,7 +3432,7 @@ Use these links to propose creative cross-paper insights if relevant.
 
                 )
 
-                
+
 
                 if is_truncated:
 
@@ -3460,11 +3460,11 @@ Use these links to propose creative cross-paper insights if relevant.
 
                         )
 
-                        
+
 
                         cont_text = continuation.choices[0].message.content.strip()
 
-                        
+
 
                         # Clean continuation - remove if it starts with the same text
 
@@ -3520,7 +3520,7 @@ Use these links to propose creative cross-paper insights if relevant.
 
                             content = content.rstrip(',;:') + "..."
 
-                
+
 
                 # CORRUPTION CHECK - validate response before accepting
 
@@ -3544,13 +3544,13 @@ Use these links to propose creative cross-paper insights if relevant.
 
                         content = f"[{agent.name} is processing... Let me gather my thoughts on this topic.]"
 
-                
+
 
                 print("✓")
 
                 return content, {}
 
-            
+
 
             except openai.APITimeoutError:
 
@@ -3572,7 +3572,7 @@ Use these links to propose creative cross-paper insights if relevant.
 
                     return None, None
 
-                
+
 
             except openai.APIConnectionError as e:
 
@@ -3596,7 +3596,7 @@ Use these links to propose creative cross-paper insights if relevant.
 
                     return None, None
 
-                    
+
 
             except openai.APIError as e:
 
@@ -3610,7 +3610,7 @@ Use these links to propose creative cross-paper insights if relevant.
 
                     return None, None
 
-                    
+
 
             except Exception as e:
 
@@ -3618,11 +3618,11 @@ Use these links to propose creative cross-paper insights if relevant.
 
                 return None, None
 
-        
+
 
         return None, None
 
-    
+
 
     def _is_corrupted_response(self, text: str) -> Tuple[bool, str]:
 
@@ -3638,7 +3638,7 @@ Use these links to propose creative cross-paper insights if relevant.
 
             return True, "Response too short"
 
-        
+
 
         # Heuristic 1: Too many consecutive uppercase letters (token corruption)
 
@@ -3648,7 +3648,7 @@ Use these links to propose creative cross-paper insights if relevant.
 
             return True, "Excessive consecutive capitals detected"
 
-        
+
 
         # Heuristic 2: High ratio of special characters (gibberish)
 
@@ -3658,7 +3658,7 @@ Use these links to propose creative cross-paper insights if relevant.
 
             return True, "Too many special characters"
 
-        
+
 
         # Heuristic 3: Common corruption patterns
 
@@ -3668,7 +3668,7 @@ Use these links to propose creative cross-paper insights if relevant.
 
                 return True, f"Corruption pattern detected: {pattern.pattern[:20]}"
 
-        
+
 
         # Heuristic 4: Too many empty lines or lines with just punctuation
 
@@ -3680,7 +3680,7 @@ Use these links to propose creative cross-paper insights if relevant.
 
             return True, "Too many empty lines"
 
-        
+
 
         # Heuristic 5: Average word length too high (concatenated garbage)
 
@@ -3694,11 +3694,11 @@ Use these links to propose creative cross-paper insights if relevant.
 
                 return True, "Average word length too high (likely corrupted)"
 
-        
+
 
         return False, ""
 
-    
+
 
     def _get_wrap_up_instruction(self, agent: Agent, topic: str) -> str:
 
@@ -3718,7 +3718,7 @@ Use these links to propose creative cross-paper insights if relevant.
 
 Keep it under 80 words - this is a quick closing summary.""",
 
-            
+
 
             "Jasmine": f"""WRAP-UP TIME: Give your closing thoughts on '{topic}':
 
@@ -3730,7 +3730,7 @@ Keep it under 80 words - this is a quick closing summary.""",
 
 Keep it under 60 words - be direct and practical as always.""",
 
-            
+
 
             "Luca": f"""WRAP-UP TIME: Give your closing synthesis on '{topic}':
 
@@ -3742,7 +3742,7 @@ Keep it under 60 words - be direct and practical as always.""",
 
 Keep it under 60 words - stay diplomatic and unifying.""",
 
-            
+
 
             "Elena": f"""WRAP-UP TIME: Give your final assessment of '{topic}':
 
@@ -3756,11 +3756,11 @@ Keep it under 60 words - maintain your standards but be collegial."""
 
         }
 
-        
+
 
         return wrap_up_instructions.get(agent.name, f"Provide your closing thoughts on '{topic}' in under 60 words.")
 
-    
+
 
     def _generate_final_stats(self) -> str:
 
@@ -3774,7 +3774,7 @@ Keep it under 60 words - maintain your standards but be collegial."""
 
         ]
 
-        
+
 
         if self.citation_analyzer:
 
@@ -3782,7 +3782,7 @@ Keep it under 60 words - maintain your standards but be collegial."""
 
             stats_lines.append("")
 
-        
+
 
         stats_lines.append("AGENT PERFORMANCE:")
 
@@ -3808,17 +3808,17 @@ Keep it under 60 words - maintain your standards but be collegial."""
 
             stats_lines.append(f"  • Critique change rate: {m['critique_change_rate']:.2f}")
 
-        
+
 
         return "\n".join(stats_lines)
 
-    
+
 
     def _strip_agent_prefix(self, response: str, agent_name: str) -> str:
 
         """Strip duplicate agent name prefixes from the response.
 
-        
+
 
         Handles patterns like:
 
@@ -3830,7 +3830,7 @@ Keep it under 60 words - maintain your standards but be collegial."""
 
         """
 
-        
+
 
         # Pattern: agent name followed by optional parenthetical text, then colon
 
@@ -3838,7 +3838,7 @@ Keep it under 60 words - maintain your standards but be collegial."""
 
         pattern = rf'^{re.escape(agent_name)}\s*(?:\([^)]*\))?\s*:\s*'
 
-        
+
 
         cleaned = re.sub(pattern, '', response, count=1)
 
@@ -3874,7 +3874,7 @@ Examples:
 
     )
 
-    
+
 
     parser.add_argument(
 
@@ -3888,7 +3888,7 @@ Examples:
 
     )
 
-    
+
 
     parser.add_argument(
 
@@ -3928,7 +3928,7 @@ Examples:
 
     )
 
-    
+
 
     parser.add_argument(
 
@@ -3992,7 +3992,7 @@ Examples:
 
     )
 
-    
+
 
     parser.add_argument(
 
@@ -4006,7 +4006,7 @@ Examples:
 
     )
 
-    
+
 
     parser.add_argument(
 
@@ -4034,7 +4034,7 @@ Examples:
 
     )
 
-    
+
 
     parser.add_argument(
 
@@ -4046,7 +4046,7 @@ Examples:
 
     )
 
-    
+
 
     parser.add_argument(
 
@@ -4112,7 +4112,7 @@ Examples:
 
     )
 
-    
+
 
     args, unknown = parser.parse_known_args()
 
@@ -4134,7 +4134,7 @@ def main():
 
     args = parse_args()
 
-    
+
 
     recursive_library_scan = DEFAULT_RECURSIVE_LIBRARY_SCAN
 
@@ -4192,7 +4192,7 @@ def main():
 
     )
 
-    
+
 
     # Get topic
 
@@ -4210,7 +4210,7 @@ def main():
 
         topic = input("\n🔬 Research Topic: ").strip()
 
-    
+
 
     if not topic:
 
@@ -4218,7 +4218,7 @@ def main():
 
         sys.exit(1)
 
-    
+
 
     # Run meeting
 

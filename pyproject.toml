@@ -19,8 +19,6 @@ ignore = [
     "F401",   # unused imports — several are intentional try/except probes
     "F541",   # f-string without placeholders — cosmetic, not a bug
     "F841",   # local variable assigned but never used — clean up later
-    "W291",   # trailing whitespace
-    "W293",   # whitespace before a statement (blank lines with spaces)
     "W605",   # invalid escape sequence — raw-string Windows paths
 ]
 

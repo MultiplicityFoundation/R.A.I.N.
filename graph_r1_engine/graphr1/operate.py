@@ -129,7 +129,7 @@ async def _handle_single_hyperrelation_extraction(
         weight=weight,
         source_id=edge_source_id,
     )
-    
+
 
 async def _merge_hyperedges_then_upsert(
     hyperedge_name: str,
@@ -219,22 +219,22 @@ async def _merge_edges_then_upsert(
     global_config: dict,
 ):
     edge_data = []
-    
+
     for node in nodes_data:
         source_id = node["source_id"]
         hyper_relation = node["hyper_relation"]
         weight = node["weight"]
-        
+
         already_weights = []
         already_source_ids = []
-        
+
         if await knowledge_graph_inst.has_edge(hyper_relation, entity_name):
             already_edge = await knowledge_graph_inst.get_edge(hyper_relation, entity_name)
             already_weights.append(already_edge["weight"])
             already_source_ids.extend(
                 split_string_by_multi_markers(already_edge["source_id"], [GRAPH_FIELD_SEP])
             )
-        
+
         weight = sum([weight] + already_weights)
         source_id = GRAPH_FIELD_SEP.join(
             set([source_id] + already_source_ids)
@@ -362,14 +362,14 @@ async def extract_entities(
                     if_relation
                 )
                 now_hyper_relation = if_relation["hyper_relation"]
-                
+
             if_entities = await _handle_single_entity_extraction(
                 record_attributes, chunk_key, now_hyper_relation
             )
             if if_entities is not None:
                 maybe_nodes[if_entities["entity_name"]].append(if_entities)
                 continue
-            
+
         already_processed += 1
         already_entities += len(maybe_nodes)
         already_relations += len(maybe_edges)
@@ -399,7 +399,7 @@ async def extract_entities(
             maybe_nodes[k].extend(v)
         for k, v in m_edges.items():
             maybe_edges[k].extend(v)
-            
+
     logger.info("Inserting hyperedges into storage...")
     all_hyperedges_data = []
     for result in tqdm_async(
@@ -414,7 +414,7 @@ async def extract_entities(
         unit="entity",
     ):
         all_hyperedges_data.append(await result)
-            
+
     logger.info("Inserting entities into storage...")
     all_entities_data = []
     for result in tqdm_async(
@@ -491,7 +491,7 @@ async def kg_query(
     global_config: dict,
     hashing_kv: BaseKVStorage = None,
 ) -> str:
-    
+
     hl_keywords = query
     ll_keywords = query
     keywords = [ll_keywords, hl_keywords]
@@ -503,7 +503,7 @@ async def kg_query(
         text_chunks_db,
         query_param,
     )
-    
+
     return context
 
 
@@ -534,7 +534,7 @@ async def _build_query_context(
         text_chunks_db,
         query_param,
     )
-    
+
     know_score = dict()
     for i, k in enumerate(knowledge_list_1):
         if k not in know_score:
@@ -559,7 +559,7 @@ async def _get_node_data(
     entities_vdb: BaseVectorStorage,
     text_chunks_db: BaseKVStorage[TextChunkSchema],
     query_param: QueryParam,
-):  
+):
     results = entities_vdb
     if not len(results):
         return "", "", ""
@@ -578,7 +578,7 @@ async def _get_node_data(
         {**n, "entity_name": k, "rank": d}
         for k, n, d in zip(results, node_datas, node_degrees)
         if n is not None
-    ]  
+    ]
     use_relations = await _find_most_related_edges_from_entities(
         node_datas, query_param, knowledge_graph_inst
     )
@@ -705,7 +705,7 @@ async def _get_edge_data(
     hyperedges_vdb: BaseVectorStorage,
     text_chunks_db: BaseKVStorage[TextChunkSchema],
     query_param: QueryParam,
-):  
+):
     results = hyperedges_vdb
 
     if not len(results):
@@ -741,11 +741,11 @@ async def _find_most_related_entities_from_relationships(
     query_param: QueryParam,
     knowledge_graph_inst: BaseGraphStorage,
 ):
-    
+
     node_datas = await asyncio.gather(
         *[knowledge_graph_inst.get_node_edges(edge["hyperedge"]) for edge in edge_datas]
     )
-    
+
     entity_names = []
     seen = set()
 
