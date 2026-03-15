@@ -171,7 +171,11 @@ fn format_results(papers: &[ArxivPaper], query: &str) -> String {
             lines.push(format!("    PDF: {pdf}"));
         }
         let abs = if paper.abstract_text.len() > ABSTRACT_TRUNCATE_LEN {
-            format!("{}...", &paper.abstract_text[..ABSTRACT_TRUNCATE_LEN])
+            let mut end = ABSTRACT_TRUNCATE_LEN;
+            while end > 0 && !paper.abstract_text.is_char_boundary(end) {
+                end -= 1;
+            }
+            format!("{}...", &paper.abstract_text[..end])
         } else {
             paper.abstract_text.clone()
         };
