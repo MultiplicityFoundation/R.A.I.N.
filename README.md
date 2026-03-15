@@ -46,9 +46,9 @@ hero:
 
 ---
 
-## What is R.A.I.N. Lab?
+## What is the R.A.I.N. Lab?
 
-R.A.I.N. Lab are recursive AI research assistants that helps you explore ideas and make real discoveries. Unlike a regular chatbot that might "discover" things you already know, R.A.I.N. Lab cross-checks your internal knowledge and online sources to make sure you are exploring genuinely new territory.
+Vers3Dynamics' R.A.I.N. Lab are recursive AI research assistants that helps you explore ideas and make real discoveries. Unlike a regular chatbot that might "discover" things you already know, R.A.I.N. Lab cross-checks your internal knowledge and online sources to make sure you are exploring genuinely new territory.
 
 **What you can do with it:**
 
@@ -63,7 +63,7 @@ R.A.I.N. Lab are recursive AI research assistants that helps you explore ideas a
 
 ## Install in 3 Steps
 
-R.A.I.N. Lab runs on **Windows**, **macOS**, and **Linux**. Pick your platform below and follow the steps.
+The R.A.I.N. Lab runs on **Windows**, **macOS**, and **Linux**. Pick your platform below and follow the steps.
 
 > **What you will need before you start:**
 >
