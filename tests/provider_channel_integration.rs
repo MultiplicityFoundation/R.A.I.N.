@@ -11,12 +11,10 @@ use zeroclaw::channels::traits::{Channel, ChannelMessage, SendMessage};
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 struct MockChannel {
     name: String,
 }
 
-#[allow(dead_code)]
 impl MockChannel {
     fn new(name: &str) -> Self {
         Self {
@@ -36,7 +34,10 @@ impl Channel for MockChannel {
         Ok(())
     }
 
-    async fn listen(&self, _tx: tokio::sync::mpsc::Sender<ChannelMessage>) -> anyhow::Result<()> {
+    async fn listen(
+        &self,
+        _tx: tokio::sync::mpsc::Sender<ChannelMessage>,
+    ) -> anyhow::Result<()> {
         anyhow::bail!("Mock channel listen not implemented")
     }
 

@@ -11,33 +11,19 @@ use std::time::Duration;
 const SHELL_TIMEOUT_SECS: u64 = 60;
 /// Maximum output size in bytes (1MB).
 const MAX_OUTPUT_BYTES: usize = 1_048_576;
-
 /// Environment variables safe to pass to shell commands.
 /// Only functional variables are included — never API keys or secrets.
-#[cfg(not(target_os = "windows"))]
-const SAFE_ENV_VARS: &[&str] = &[
-    "PATH", "HOME", "TERM", "LANG", "LC_ALL", "LC_CTYPE", "USER", "SHELL", "TMPDIR",
-];
-
-/// Environment variables safe to pass to shell commands on Windows.
-/// Includes Windows-specific variables needed for cmd.exe and program resolution.
-#[cfg(target_os = "windows")]
 const SAFE_ENV_VARS: &[&str] = &[
     "PATH",
-    "PATHEXT",
     "HOME",
     "USERPROFILE",
-    "HOMEDRIVE",
-    "HOMEPATH",
-    "SYSTEMROOT",
-    "SYSTEMDRIVE",
-    "WINDIR",
-    "COMSPEC",
-    "TEMP",
-    "TMP",
     "TERM",
     "LANG",
-    "USERNAME",
+    "LC_ALL",
+    "LC_CTYPE",
+    "USER",
+    "SHELL",
+    "TMPDIR",
 ];
 
 /// Shell command execution tool with sandboxing
@@ -187,19 +173,11 @@ impl Tool for ShellTool {
 
                 // Truncate output to prevent OOM
                 if stdout.len() > MAX_OUTPUT_BYTES {
-                    let mut b = MAX_OUTPUT_BYTES.min(stdout.len());
-                    while b > 0 && !stdout.is_char_boundary(b) {
-                        b -= 1;
-                    }
-                    stdout.truncate(b);
+                    stdout.truncate(stdout.floor_char_boundary(MAX_OUTPUT_BYTES));
                     stdout.push_str("\n... [output truncated at 1MB]");
                 }
                 if stderr.len() > MAX_OUTPUT_BYTES {
-                    let mut b = MAX_OUTPUT_BYTES.min(stderr.len());
-                    while b > 0 && !stderr.is_char_boundary(b) {
-                        b -= 1;
-                    }
-                    stderr.truncate(b);
+                    stderr.truncate(stderr.floor_char_boundary(MAX_OUTPUT_BYTES));
                     stderr.push_str("\n... [stderr truncated at 1MB]");
                 }
 
@@ -414,7 +392,7 @@ mod tests {
         Arc::new(SecurityPolicy {
             autonomy: AutonomyLevel::Supervised,
             workspace_dir: std::env::temp_dir(),
-            allowed_commands: vec!["env".into(), "echo".into()],
+            allowed_commands: vec![env_dump_command().into(), "echo".into()],
             ..SecurityPolicy::default()
         })
     }
@@ -423,10 +401,21 @@ mod tests {
         Arc::new(SecurityPolicy {
             autonomy: AutonomyLevel::Supervised,
             workspace_dir: std::env::temp_dir(),
-            allowed_commands: vec!["env".into()],
+            allowed_commands: vec![env_dump_command().into()],
             shell_env_passthrough: vars.iter().map(|v| (*v).to_string()).collect(),
             ..SecurityPolicy::default()
         })
+    }
+
+    fn env_dump_command() -> &'static str {
+        #[cfg(windows)]
+        {
+            "set"
+        }
+        #[cfg(not(windows))]
+        {
+            "env"
+        }
     }
 
     /// RAII guard that restores an environment variable to its original state on drop,
@@ -460,7 +449,7 @@ mod tests {
 
         let tool = ShellTool::new(test_security_with_env_cmd(), test_runtime());
         let result = tool
-            .execute(json!({"command": "env"}))
+            .execute(json!({"command": env_dump_command()}))
             .await
             .expect("env command execution should succeed");
         assert!(result.success);
@@ -479,17 +468,23 @@ mod tests {
         let tool = ShellTool::new(test_security_with_env_cmd(), test_runtime());
 
         let result = tool
-            .execute(json!({"command": "env"}))
+            .execute(json!({"command": env_dump_command()}))
             .await
             .expect("env command should succeed");
         assert!(result.success);
         assert!(
-            result.output.contains("HOME="),
-            "HOME should be available in shell environment"
-        );
-        assert!(
             result.output.contains("PATH="),
             "PATH should be available in shell environment"
+        );
+        #[cfg(windows)]
+        assert!(
+            result.output.contains("USERPROFILE=") || result.output.contains("HOME="),
+            "Windows shell environment should include USERPROFILE (or HOME if provided)"
+        );
+        #[cfg(not(windows))]
+        assert!(
+            result.output.contains("HOME="),
+            "HOME should be available in shell environment"
         );
     }
 
@@ -517,7 +512,7 @@ mod tests {
         );
 
         let result = tool
-            .execute(json!({"command": "env"}))
+            .execute(json!({"command": env_dump_command()}))
             .await
             .expect("env command execution should succeed");
         assert!(result.success);
@@ -548,14 +543,14 @@ mod tests {
     async fn shell_requires_approval_for_medium_risk_command() {
         let security = Arc::new(SecurityPolicy {
             autonomy: AutonomyLevel::Supervised,
-            allowed_commands: vec!["touch".into()],
+            allowed_commands: vec!["mkdir".into()],
             workspace_dir: std::env::temp_dir(),
             ..SecurityPolicy::default()
         });
 
         let tool = ShellTool::new(security.clone(), test_runtime());
         let denied = tool
-            .execute(json!({"command": "touch zeroclaw_shell_approval_test"}))
+            .execute(json!({"command": "mkdir zeroclaw_shell_approval_test"}))
             .await
             .expect("unapproved command should return a result");
         assert!(!denied.success);
@@ -567,7 +562,7 @@ mod tests {
 
         let allowed = tool
             .execute(json!({
-                "command": "touch zeroclaw_shell_approval_test",
+                "command": "mkdir zeroclaw_shell_approval_test",
                 "approved": true
             }))
             .await
@@ -575,10 +570,11 @@ mod tests {
         assert!(allowed.success);
 
         let _ =
-            tokio::fs::remove_file(std::env::temp_dir().join("zeroclaw_shell_approval_test")).await;
+            tokio::fs::remove_dir_all(std::env::temp_dir().join("zeroclaw_shell_approval_test"))
+                .await;
     }
 
-    // ── shell timeout enforcement tests ─────────────────
+    // ── §5.2 Shell timeout enforcement tests ─────────────────
 
     #[test]
     fn shell_timeout_constant_is_reasonable() {
@@ -593,7 +589,7 @@ mod tests {
         );
     }
 
-    // ── Non-UTF8 binary output tests ────────────────────
+    // ── §5.3 Non-UTF8 binary output tests ────────────────────
 
     #[test]
     fn shell_safe_env_vars_excludes_secrets() {
@@ -613,8 +609,8 @@ mod tests {
             "PATH must be in safe env vars"
         );
         assert!(
-            SAFE_ENV_VARS.contains(&"HOME") || SAFE_ENV_VARS.contains(&"USERPROFILE"),
-            "HOME or USERPROFILE must be in safe env vars"
+            SAFE_ENV_VARS.contains(&"HOME"),
+            "HOME must be in safe env vars"
         );
         assert!(
             SAFE_ENV_VARS.contains(&"TERM"),
