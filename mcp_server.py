@@ -23,9 +23,7 @@ Usage::
 
 from __future__ import annotations
 
-import glob
 import os
-import re
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
@@ -273,7 +271,9 @@ def create_mcp_server(
         status (active/proven/disproven), visit counts, and scores.
         """
         try:
-            from hypothesis_tree import HypothesisTree
+            import importlib.util
+            if importlib.util.find_spec("hypothesis_tree") is None:
+                raise ImportError("hypothesis_tree not available")
             # This is a read-only snapshot tool — it cannot modify the tree.
             # The actual tree lives in the orchestrator; this returns a
             # placeholder until a running session exports its state.
