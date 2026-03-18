@@ -54,6 +54,7 @@ def test_evaluate_results_summarizes_successful_runs():
     assert evaluation["failure_count"] == 0
     assert evaluation["best_run"]["config"] == {"prompt_variant": "v2"}
     assert "2/2 experiment runs succeeded" in evaluation["summary"]
+    assert "Best run: prompt_variant=v2" in evaluation["summary"]
     assert evaluation["highlights"][0]["config_label"] == "prompt_variant=v2"
 
 

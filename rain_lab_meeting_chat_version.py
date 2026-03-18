@@ -445,7 +445,9 @@ class Config:
 
     model_name: str = DEFAULT_MODEL_NAME
 
-    max_tokens: int = 200  # Enough tokens for agents to complete their thoughts
+    max_tokens: int = field(
+        default_factory=lambda: int(os.environ.get("RAIN_CHAT_MAX_TOKENS", "320"))
+    )  # Enough tokens for agents to complete their thoughts
 
     timeout: float = float(os.environ.get("RAIN_LM_TIMEOUT", "300"))
 
