@@ -70,11 +70,14 @@ def notify(summary):
         print("requests not installed; skipping Discord notification.")
         return
 
-    requests.post(
-        webhook_url,
-        json={"content": f"Lab update:\n{summary}"},
-        timeout=10,
-    )
+    try:
+        requests.post(
+            webhook_url,
+            json={"content": f"Lab update:\n{summary}"},
+            timeout=10,
+        )
+    except Exception as exc:
+        print(f"Discord notification failed: {exc}")
 
 
 def main():
