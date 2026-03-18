@@ -192,16 +192,22 @@ def format_evaluation_report(evaluation: dict) -> str:
 
     best_run = evaluation.get("best_run")
     if best_run is not None:
-        lines.append(
-            f"- Best run: {format_config_label(best_run['config'])} | score={best_run['score']} | returncode={best_run['returncode']}"
+        best_run_line = (
+            f"- Best run: {format_config_label(best_run['config'])}"
+            f" | score={best_run['score']}"
+            f" | returncode={best_run['returncode']}"
         )
+        lines.append(best_run_line)
 
     if evaluation.get("highlights"):
         lines.append("- Run highlights:")
         for item in evaluation["highlights"]:
-            lines.append(
-                f"  • {item['config_label']} | {item['status']} | score={item['score']} | duration={item['duration_s']}s"
+            highlight_line = (
+                f"  • {item['config_label']} | {item['status']}"
+                f" | score={item['score']}"
+                f" | duration={item['duration_s']}s"
             )
+            lines.append(highlight_line)
             lines.append(f"    preview: {item['snippet']}")
 
     return "\n".join(lines)
