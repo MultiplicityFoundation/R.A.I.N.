@@ -126,7 +126,8 @@ def pick_headless_python() -> str:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="OpenClaw background supervisor for james_library")
     parser.add_argument("--service-name", default="james-library")
-    parser.add_argument("--target", default="rain_lab.py", help="Python entrypoint to supervise")
+    parser.add_argument("--target", default="rain_lab.py", help="Python entrypoint or raw command to supervise")
+    parser.add_argument("--raw-command", action="store_true", help="Run target as a raw command instead of a Python script")
     parser.add_argument("--interval", type=int, default=60, help="Heartbeat interval in seconds")
     parser.add_argument("target_args", nargs=argparse.REMAINDER, help="Arguments passed to target")
     return parser.parse_args(argv)
@@ -137,7 +138,7 @@ def main(argv: list[str] | None = None) -> int:
     repo_root = Path(__file__).resolve().parent
     target_script = (repo_root / args.target).resolve()
 
-    if not target_script.exists():
+    if not args.raw_command and not target_script.exists():
         raise FileNotFoundError(f"Target script not found: {target_script}")
 
     restart_event = threading.Event()
@@ -166,7 +167,10 @@ def main(argv: list[str] | None = None) -> int:
         target_args = target_args[1:]
 
     while not stop_event.is_set():
-        cmd = [headless_python, str(target_script), *target_args]
+        if args.raw_command:
+            cmd = [args.target, *target_args]
+        else:
+            cmd = [headless_python, str(target_script), *target_args]
         print(f"[OpenClaw] launching: {' '.join(cmd)}", flush=True)
         child = subprocess.Popen(cmd, cwd=str(repo_root), env=os.environ.copy())
 
