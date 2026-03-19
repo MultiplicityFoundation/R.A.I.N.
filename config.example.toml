@@ -84,14 +84,14 @@ kind = "native"
 # =============================================================================
 # Model Providers (multi-provider setup)
 # =============================================================================
-# Add additional provider configurations here
+[providers]
+# Set to "ollama" to use the new autonomous MiniMax-M2.7 integration
+active = "ollama" 
 
-# [model_providers.ollama]
-# api_url = "http://localhost:11434"
-# default_model = "llama3.2"
-
-# [model_providers.openrouter]
-# api_key = "YOUR_OPENROUTER_KEY_HERE"
+[providers.ollama]
+base_url = "http://localhost:11434"
+model = "minimax-m2.7:cloud"
+# Recommended for Pillar 5 Rituals and headless research
 
 # =============================================================================
 # Security
