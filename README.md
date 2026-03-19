@@ -47,7 +47,7 @@ hero:
 
 ---
 
-## Project Identity (Quick Map)
+## Who We Are
 
 To avoid naming confusion, use this quick map:
 
