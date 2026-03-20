@@ -472,8 +472,10 @@ MIT License. See [LICENSE](LICENSE).
 
 R.A.I.N. Lab is a [Vers3Dynamics](https://vers3dynamics.com/) project, built on the ZeroClaw runtime with inspiration from MIT CSAIL research. Huge thanks to both teams for creating such a high-performance, lightweight agent runtime that made this lab possible.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=topherchris420/james_library&type=Date&theme=dark&v=1">
-  <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=topherchris420/james_library&type=Date&v=1">
-  <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=topherchris420/james_library&type=Date&v=1">
-</picture>
+<a href="https://www.star-history.com/?repos=topherchris420%2Fjames_library&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/image?repos=topherchris420/james_library&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/image?repos=topherchris420/james_library&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/image?repos=topherchris420/james_library&type=date&legend=top-left" />
+ </picture>
+</a>
