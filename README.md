@@ -21,7 +21,7 @@ hero:
 </p>
 
 <p align="center">
-  <strong>Your personal AI research assistants — talk about ideas, verify discoveries, and organize your work.</strong>
+  <strong>James, Elena, Jasmine, and Luca — talk about ideas, verify discoveries, and organize your work.</strong>
 </p>
 
 <p align="center">
