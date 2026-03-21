@@ -1,6 +1,6 @@
-# 🐙James // R.A.I.N. Lab: Mathematically-Verified Autonomous Research
+# R.A.I.N. Lab: Mathematically-Verified Autonomous Research
 
-**(Recursive Architecture for Intelligent Nexus)**
+**James🐙**
 
 <p align="center">
   <img src="assets/rain_lab.png" alt="R.A.I.N. Lab logo" width="900" />
