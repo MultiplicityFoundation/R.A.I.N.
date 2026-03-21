@@ -2,9 +2,43 @@
 
 **(Recursive Architecture for Intelligent Nexus)**
 
+<p align="center">
+  <img src="assets/rain_lab.png" alt="R.A.I.N. Lab logo" width="900" />
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/python-3.10+-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+" />
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-0078D4?style=flat-square" alt="Platform" />
+  <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License" />
+  <img src="https://img.shields.io/badge/rust-1.87+%20(optional)-dea584?style=flat-square&logo=rust" alt="Rust (optional)" />
+</p>
+
+<p align="center">
+  <strong>🌐 Read this in:</strong>
+  <a href="README.zh-CN.md">中文</a> ·
+  <a href="README.ja.md">日本語</a> ·
+  <a href="README.ru.md">Русский</a> ·
+  <a href="README.fr.md">Français</a> ·
+  <a href="README.vi.md">Tiếng Việt</a>
+</p>
+
 R.A.I.N. Lab is a high-performance, local-first multi-agent research platform. It solves the biggest bottleneck in modern AI—"The Hallucination Problem"—by bridging the lateral creativity of Large Language Models with the strict, deterministic logic of Formal Verification.
 
 **It doesn't just chat. It explores, debates, and mathematically proves its conclusions inside a secure WebAssembly sandbox.**
+
+---
+
+## Who We Are
+
+To avoid naming confusion, use this quick map:
+
+- **R.A.I.N. Lab** = the end-user product experience
+- **James Library** = the Python research/workflow layer
+- **ZeroClaw** = the Rust runtime layer (`zeroclaw` crate)
+
+Runtime flow at a glance:
+
+`User -> R.A.I.N. Lab interface -> ZeroClaw runtime (agent/channels/tools/memory/security) -> James Library research workflows -> model/provider APIs`
 
 ---
 
@@ -448,6 +482,8 @@ python rain_lab.py --mode chat --ui on --topic "your topic"
 ---
 
 ## Documentation
+
+<a href="https://deepwiki.com/topherchris420/james_library"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki" /></a>
 
 - [Architecture](ARCHITECTURE.md)
 - [Product Roadmap](PRODUCT_ROADMAP.md)
