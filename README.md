@@ -40,7 +40,7 @@ As a user, you only need to know **R.A.I.N. Lab** — the other two are under th
 
 ---
 
-## ⚡ The Breakthrough: "The Circuit Breaker" Architecture
+## The Breakthrough: "The Circuit Breaker" Architecture
 
 **The problem:** Most AI multi-agent systems eventually get stuck — the agents either politely agree with each other or argue in circles forever, never concluding.
 
@@ -63,7 +63,7 @@ As a user, you only need to know **R.A.I.N. Lab** — the other two are under th
 
 ---
 
-## 🏗️ Why R.A.I.N. Lab?
+## Why R.A.I.N. Lab?
 
 * **Runs on almost anything:** The core engine is a tiny 3.1 MB program that works on laptops, desktops, and even low-powered devices.
 * **Your data stays on your machine:** All conversations and files are stored locally with strong encryption. Nothing is sent to the cloud unless you choose to connect a cloud AI provider.
@@ -72,7 +72,7 @@ As a user, you only need to know **R.A.I.N. Lab** — the other two are under th
 
 ---
 
-## 🚀 How it Works (The Verification Loop)
+## How it Works (The Verification Loop)
 
 When agents disagree about something that can be checked logically, R.A.I.N. Lab doesn't let them guess — it proves who's right. Here's what happens behind the scenes:
 
@@ -113,7 +113,7 @@ pub extern "C" fn verify_logic(input_ptr: *const c_char) -> *mut c_char { ... }
 
 ---
 
-## 🧠 Who is this for?
+## Who is this for?
 
 * **Academic Researchers:** Run automated, 6-round peer reviews on your thesis against a local library of ArXiv PDFs before you ever show it to your advisor.
 * **Math & Physics R&D:** Use the WASM plugin system to let the AI run overnight simulations in Lean, Coq, or custom Rust physics engines.
