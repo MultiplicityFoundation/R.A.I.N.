@@ -316,50 +316,51 @@ pub(crate) fn is_model_switch_requested(err: &anyhow::Error) -> Option<(String, 
         .next()
 }
 
+pub(crate) struct AgentTurnContext<'a> {
+    pub provider: &'a dyn Provider,
+    pub history: &'a mut Vec<ChatMessage>,
+    pub tools_registry: &'a [Box<dyn Tool>],
+    pub observer: &'a dyn Observer,
+    pub provider_name: &'a str,
+    pub model: &'a str,
+    pub temperature: f64,
+    pub silent: bool,
+    pub channel_name: &'a str,
+    pub channel_reply_target: Option<&'a str>,
+    pub multimodal_config: &'a crate::config::MultimodalConfig,
+    pub max_tool_iterations: usize,
+    pub approval: Option<&'a ApprovalManager>,
+    pub excluded_tools: &'a [String],
+    pub dedup_exempt_tools: &'a [String],
+    pub activated_tools: Option<&'a Arc<Mutex<crate::tools::ActivatedToolSet>>>,
+    pub model_switch_callback: Option<ModelSwitchCallback>,
+}
+
 /// Execute a single turn of the agent loop: send messages, parse tool calls,
 /// execute tools, and loop until the LLM produces a final text response.
 /// When `silent` is true, suppresses stdout (for channel use).
-#[allow(clippy::too_many_arguments)]
-pub(crate) async fn agent_turn(
-    provider: &dyn Provider,
-    history: &mut Vec<ChatMessage>,
-    tools_registry: &[Box<dyn Tool>],
-    observer: &dyn Observer,
-    provider_name: &str,
-    model: &str,
-    temperature: f64,
-    silent: bool,
-    channel_name: &str,
-    channel_reply_target: Option<&str>,
-    multimodal_config: &crate::config::MultimodalConfig,
-    max_tool_iterations: usize,
-    approval: Option<&ApprovalManager>,
-    excluded_tools: &[String],
-    dedup_exempt_tools: &[String],
-    activated_tools: Option<&std::sync::Arc<std::sync::Mutex<crate::tools::ActivatedToolSet>>>,
-    model_switch_callback: Option<ModelSwitchCallback>,
-) -> Result<String> {
+pub(crate) async fn agent_turn(context: AgentTurnContext<'_>) -> Result<String> {
     run_tool_call_loop(
-        provider,
-        history,
-        tools_registry,
-        observer,
-        provider_name,
-        model,
-        temperature,
-        silent,
-        approval,
-        channel_name,
-        channel_reply_target,
-        multimodal_config,
-        max_tool_iterations,
+        context.provider,
+        context.history,
+        context.tools_registry,
+        context.observer,
+        context.provider_name,
+        context.model,
+        context.temperature,
+        context.silent,
+        context.approval,
+        context.channel_name,
+        context.channel_reply_target,
+        context.multimodal_config,
+        context.max_tool_iterations,
         None,
         None,
         None,
-        excluded_tools,
-        dedup_exempt_tools,
-        activated_tools,
-        model_switch_callback,
+        context.excluded_tools,
+        context.dedup_exempt_tools,
+        context.activated_tools,
+        context.model_switch_callback,
         &crate::config::PacingConfig::default(),
     )
     .await
@@ -2576,25 +2577,25 @@ pub async fn process_message(
         excluded_tools.extend(config.autonomy.non_cli_excluded_tools.iter().cloned());
     }
 
-    agent_turn(
-        provider.as_ref(),
-        &mut history,
-        &tools_registry,
-        observer.as_ref(),
+    agent_turn(AgentTurnContext {
+        provider: provider.as_ref(),
+        history: &mut history,
+        tools_registry: &tools_registry,
+        observer: observer.as_ref(),
         provider_name,
-        &model_name,
-        config.default_temperature,
-        true,
-        "daemon",
-        None,
-        &config.multimodal,
-        config.agent.max_tool_iterations,
-        Some(&approval_manager),
-        &excluded_tools,
-        &config.agent.tool_call_dedup_exempt,
-        activated_handle_pm.as_ref(),
-        None,
-    )
+        model: &model_name,
+        temperature: config.default_temperature,
+        silent: true,
+        channel_name: "daemon",
+        channel_reply_target: None,
+        multimodal_config: &config.multimodal,
+        max_tool_iterations: config.agent.max_tool_iterations,
+        approval: Some(&approval_manager),
+        excluded_tools: &excluded_tools,
+        dedup_exempt_tools: &config.agent.tool_call_dedup_exempt,
+        activated_tools: activated_handle_pm.as_ref(),
+        model_switch_callback: None,
+    })
     .await
 }
 
@@ -3961,25 +3962,25 @@ mod tests {
             ];
             let observer = NoopObserver;
 
-            let result = agent_turn(
-                &provider,
-                &mut history,
-                &tools_registry,
-                &observer,
-                "mock-provider",
-                "mock-model",
-                0.0,
-                true,
-                "daemon",
-                None,
-                &crate::config::MultimodalConfig::default(),
-                4,
-                None,
-                &[],
-                &[],
-                Some(&activated),
-                None,
-            )
+            let result = agent_turn(AgentTurnContext {
+                provider: &provider,
+                history: &mut history,
+                tools_registry: &tools_registry,
+                observer: &observer,
+                provider_name: "mock-provider",
+                model: "mock-model",
+                temperature: 0.0,
+                silent: true,
+                channel_name: "daemon",
+                channel_reply_target: None,
+                multimodal_config: &crate::config::MultimodalConfig::default(),
+                max_tool_iterations: 4,
+                approval: None,
+                excluded_tools: &[],
+                dedup_exempt_tools: &[],
+                activated_tools: Some(&activated),
+                model_switch_callback: None,
+            })
             .await
             .expect("wrapper path should execute activated tools");
 
