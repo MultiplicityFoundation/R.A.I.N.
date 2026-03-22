@@ -210,7 +210,10 @@ impl SopEngine {
         }
 
         // Update run state
-        let run = self.active_runs.get_mut(run_id).unwrap();
+        let run = self
+            .active_runs
+            .get_mut(run_id)
+            .ok_or_else(|| anyhow::anyhow!("SOP run {run_id} not found in active runs"))?;
         run.current_step = next_step_num;
 
         let step_idx = (next_step_num - 1) as usize;
@@ -359,7 +362,10 @@ impl SopEngine {
         status: SopRunStatus,
         reason: Option<String>,
     ) -> SopRunAction {
-        let mut run = self.active_runs.remove(run_id).unwrap();
+        let mut run = self
+            .active_runs
+            .remove(run_id)
+            .expect("BUG: finish_run called with unknown run_id");
         run.status = status;
         run.completed_at = Some(now_iso8601());
         let sop_name = run.sop_name.clone();

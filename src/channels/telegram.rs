@@ -2626,7 +2626,9 @@ impl Channel for TelegramChannel {
                 let chat_id_owned = chat_id.to_string();
                 let thread_id_owned = thread_id.map(str::to_string);
                 let recipient = message.recipient.clone();
-                let tts_config = self.tts_config.clone().unwrap();
+                let Some(tts_config) = self.tts_config.clone() else {
+                    return Ok(());
+                };
                 tokio::spawn(async move {
                     // Wait 10 seconds — long enough for the agent to finish its
                     // full tool chain and send the final answer.

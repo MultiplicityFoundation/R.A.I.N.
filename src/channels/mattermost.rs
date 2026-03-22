@@ -113,10 +113,12 @@ impl Channel for MattermostChannel {
         });
 
         if let Some(root) = root_id {
-            body_map.as_object_mut().unwrap().insert(
-                "root_id".to_string(),
-                serde_json::Value::String(root.to_string()),
-            );
+            if let Some(obj) = body_map.as_object_mut() {
+                obj.insert(
+                    "root_id".to_string(),
+                    serde_json::Value::String(root.to_string()),
+                );
+            }
         }
 
         let resp = self
