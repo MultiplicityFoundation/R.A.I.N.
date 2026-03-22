@@ -3,6 +3,13 @@ use crate::agent::history::{
     load_interactive_session_history, memory_session_id_from_state_file,
     save_interactive_session_history, trim_history, DEFAULT_MAX_HISTORY_MESSAGES,
 };
+pub(crate) use crate::agent::runtime_support::{
+    check_tool_loop_budget, clear_model_switch_request, get_model_switch_state,
+    is_model_switch_requested, scrub_credentials, ModelSwitchCallback, ModelSwitchRequested,
+    ToolLoopCostTrackingContext, DRAFT_CLEAR_SENTINEL, TOOL_CHOICE_OVERRIDE,
+    TOOL_LOOP_COST_TRACKING_CONTEXT,
+};
+use crate::agent::runtime_support::{record_tool_loop_cost_usage, truncate_tool_args_for_progress};
 use crate::agent::tool_call_parser::{
     build_native_assistant_history, build_native_assistant_history_from_parsed_calls,
     detect_tool_call_parse_issue, parse_structured_tool_calls, parse_tool_calls,
@@ -26,10 +33,8 @@ use crate::agent::tool_call_parser::{
 use crate::agent::tool_filter::{filter_tool_specs_for_turn, glob_match};
 
 use crate::approval::{ApprovalManager, ApprovalRequest, ApprovalResponse};
-use crate::config::schema::ModelPricing;
 use crate::config::Config;
-use crate::cost::types::{BudgetCheck, TokenUsage as CostTokenUsage};
-use crate::cost::CostTracker;
+use crate::cost::types::BudgetCheck;
 use crate::i18n::ToolDescriptions;
 use crate::memory::{self, Memory, MemoryCategory};
 use crate::multimodal;
@@ -42,131 +47,17 @@ use crate::security::{AutonomyLevel, SecurityPolicy};
 use crate::tools::{self, Tool};
 use crate::util::truncate_with_ellipsis;
 use anyhow::Result;
-use regex::Regex;
 use std::collections::HashSet;
 use std::fmt::Write;
 use std::io::Write as _;
 use std::path::PathBuf;
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-// ── Cost tracking via task-local ──
-
-/// Context for cost tracking within the tool call loop.
-/// Scoped via `tokio::task_local!` at call sites (channels, gateway).
-#[derive(Clone)]
-pub(crate) struct ToolLoopCostTrackingContext {
-    pub tracker: Arc<CostTracker>,
-    pub prices: Arc<std::collections::HashMap<String, ModelPricing>>,
-}
-
-impl ToolLoopCostTrackingContext {
-    pub(crate) fn new(
-        tracker: Arc<CostTracker>,
-        prices: Arc<std::collections::HashMap<String, ModelPricing>>,
-    ) -> Self {
-        Self { tracker, prices }
-    }
-}
-
-tokio::task_local! {
-    pub(crate) static TOOL_LOOP_COST_TRACKING_CONTEXT: Option<ToolLoopCostTrackingContext>;
-}
-
-/// 3-tier model pricing lookup:
-/// 1. Direct model name
-/// 2. Qualified `provider/model`
-/// 3. Suffix after last `/`
-fn lookup_model_pricing<'a>(
-    prices: &'a std::collections::HashMap<String, ModelPricing>,
-    provider_name: &str,
-    model: &str,
-) -> Option<&'a ModelPricing> {
-    prices
-        .get(model)
-        .or_else(|| prices.get(&format!("{provider_name}/{model}")))
-        .or_else(|| {
-            model
-                .rsplit_once('/')
-                .and_then(|(_, suffix)| prices.get(suffix))
-        })
-}
-
-/// Record token usage from an LLM response via the task-local cost tracker.
-/// Returns `(total_tokens, cost_usd)` on success, `None` when not scoped or no usage.
-fn record_tool_loop_cost_usage(
-    provider_name: &str,
-    model: &str,
-    usage: &crate::providers::traits::TokenUsage,
-) -> Option<(u64, f64)> {
-    let input_tokens = usage.input_tokens.unwrap_or(0);
-    let output_tokens = usage.output_tokens.unwrap_or(0);
-    let total_tokens = input_tokens.saturating_add(output_tokens);
-    if total_tokens == 0 {
-        return None;
-    }
-
-    let ctx = TOOL_LOOP_COST_TRACKING_CONTEXT
-        .try_with(Clone::clone)
-        .ok()
-        .flatten()?;
-    let pricing = lookup_model_pricing(&ctx.prices, provider_name, model);
-    let cost_usage = CostTokenUsage::new(
-        model,
-        input_tokens,
-        output_tokens,
-        pricing.map_or(0.0, |entry| entry.input),
-        pricing.map_or(0.0, |entry| entry.output),
-    );
-
-    if pricing.is_none() {
-        tracing::debug!(
-            provider = provider_name,
-            model,
-            "Cost tracking recorded token usage with zero pricing (no pricing entry found)"
-        );
-    }
-
-    if let Err(error) = ctx.tracker.record_usage(cost_usage.clone()) {
-        tracing::warn!(
-            provider = provider_name,
-            model,
-            "Failed to record cost tracking usage: {error}"
-        );
-    }
-
-    Some((cost_usage.total_tokens, cost_usage.cost_usd))
-}
-
-/// Check budget before an LLM call. Returns `None` when no cost tracking
-/// context is scoped (tests, delegate, CLI without cost config).
-pub(crate) fn check_tool_loop_budget() -> Option<BudgetCheck> {
-    TOOL_LOOP_COST_TRACKING_CONTEXT
-        .try_with(Clone::clone)
-        .ok()
-        .flatten()
-        .map(|ctx| {
-            ctx.tracker
-                .check_budget(0.0)
-                .unwrap_or(BudgetCheck::Allowed)
-        })
-}
-
 /// Minimum characters per chunk when relaying LLM text to a streaming draft.
 const STREAM_CHUNK_MIN_CHARS: usize = 80;
-
-/// Sentinel value sent on the streaming delta channel to signal the receiver
-/// to clear any accumulated draft text before the final answer is streamed.
-pub(crate) const DRAFT_CLEAR_SENTINEL: &str = "\x00__draft_clear__";
-
-// Task-local override for the Anthropic `tool_choice` parameter.
-// Set by the agent loop (e.g. "any" to force tool use for hardware requests)
-// and read by providers that support native tool calling.
-tokio::task_local! {
-    pub(crate) static TOOL_CHOICE_OVERRIDE: Option<String>;
-}
 
 /// Default maximum agentic tool-use iterations per user message to prevent runaway loops.
 /// Used as a safe fallback when `max_tool_iterations` is unset or configured as zero.
@@ -175,101 +66,6 @@ const DEFAULT_MAX_TOOL_ITERATIONS: usize = 10;
 /// Minimum user-message length (in chars) for auto-save to memory.
 /// Matches the channel-side constant in `channels/mod.rs`.
 const AUTOSAVE_MIN_MESSAGE_CHARS: usize = 20;
-
-/// Callback type for checking if model has been switched during tool execution.
-/// Returns Some((provider, model)) if a switch was requested, None otherwise.
-pub type ModelSwitchCallback = Arc<Mutex<Option<(String, String)>>>;
-
-/// Global model switch request state - used for runtime model switching via model_switch tool.
-/// This is set by the model_switch tool and checked by the agent loop.
-#[allow(clippy::type_complexity)]
-static MODEL_SWITCH_REQUEST: LazyLock<Arc<Mutex<Option<(String, String)>>>> =
-    LazyLock::new(|| Arc::new(Mutex::new(None)));
-
-/// Get the global model switch request state
-pub fn get_model_switch_state() -> ModelSwitchCallback {
-    Arc::clone(&MODEL_SWITCH_REQUEST)
-}
-
-/// Clear any pending model switch request
-pub fn clear_model_switch_request() {
-    if let Ok(guard) = MODEL_SWITCH_REQUEST.lock() {
-        let mut guard = guard;
-        *guard = None;
-    }
-}
-
-static SENSITIVE_KV_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?i)(token|api[_-]?key|password|secret|user[_-]?key|bearer|credential)["']?\s*[:=]\s*(?:"([^"]{8,})"|'([^']{8,})'|([a-zA-Z0-9_\-\.]{8,}))"#).unwrap()
-});
-
-/// Scrub credentials from tool output to prevent accidental exfiltration.
-/// Replaces known credential patterns with a redacted placeholder while preserving
-/// a small prefix for context.
-pub(crate) fn scrub_credentials(input: &str) -> String {
-    SENSITIVE_KV_REGEX
-        .replace_all(input, |caps: &regex::Captures| {
-            let full_match = &caps[0];
-            let key = &caps[1];
-            let val = caps
-                .get(2)
-                .or(caps.get(3))
-                .or(caps.get(4))
-                .map(|m| m.as_str())
-                .unwrap_or("");
-
-            // Preserve first 4 chars for context, then redact.
-            // Use char_indices to find the byte offset of the 4th character
-            // so we never slice in the middle of a multi-byte UTF-8 sequence.
-            let prefix = if val.len() > 4 {
-                val.char_indices()
-                    .nth(4)
-                    .map(|(byte_idx, _)| &val[..byte_idx])
-                    .unwrap_or(val)
-            } else {
-                ""
-            };
-
-            if full_match.contains(':') {
-                if full_match.contains('"') {
-                    format!("\"{}\": \"{}*[REDACTED]\"", key, prefix)
-                } else {
-                    format!("{}: {}*[REDACTED]", key, prefix)
-                }
-            } else if full_match.contains('=') {
-                if full_match.contains('"') {
-                    format!("{}=\"{}*[REDACTED]\"", key, prefix)
-                } else {
-                    format!("{}={}*[REDACTED]", key, prefix)
-                }
-            } else {
-                format!("{}: {}*[REDACTED]", key, prefix)
-            }
-        })
-        .to_string()
-}
-
-/// Build a short hint string from a tool's JSON arguments for progress display.
-/// Returns the most informative single argument value, truncated to `max_chars`.
-fn truncate_tool_args_for_progress(
-    _tool_name: &str,
-    args: &serde_json::Value,
-    max_chars: usize,
-) -> String {
-    let hint = match args {
-        serde_json::Value::Object(map) => map
-            .values()
-            .find_map(|v| v.as_str())
-            .unwrap_or("")
-            .to_string(),
-        serde_json::Value::String(s) => s.clone(),
-        _ => return String::new(),
-    };
-    if hint.is_empty() {
-        return String::new();
-    }
-    truncate_with_ellipsis(&scrub_credentials(&hint), max_chars)
-}
 
 /// Find a tool by name in the registry.
 fn find_tool<'a>(tools: &'a [Box<dyn Tool>], name: &str) -> Option<&'a dyn Tool> {
@@ -291,75 +87,52 @@ pub(crate) fn is_tool_loop_cancelled(err: &anyhow::Error) -> bool {
     err.chain().any(|source| source.is::<ToolLoopCancelled>())
 }
 
-#[derive(Debug)]
-pub(crate) struct ModelSwitchRequested {
-    pub provider: String,
-    pub model: String,
-}
-
-impl std::fmt::Display for ModelSwitchRequested {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "model switch requested to {} {}",
-            self.provider, self.model
-        )
-    }
-}
-
-impl std::error::Error for ModelSwitchRequested {}
-
-pub(crate) fn is_model_switch_requested(err: &anyhow::Error) -> Option<(String, String)> {
-    err.chain()
-        .filter_map(|source| source.downcast_ref::<ModelSwitchRequested>())
-        .map(|e| (e.provider.clone(), e.model.clone()))
-        .next()
-}
-
 /// Execute a single turn of the agent loop: send messages, parse tool calls,
 /// execute tools, and loop until the LLM produces a final text response.
 /// When `silent` is true, suppresses stdout (for channel use).
-#[allow(clippy::too_many_arguments)]
-pub(crate) async fn agent_turn(
-    provider: &dyn Provider,
-    history: &mut Vec<ChatMessage>,
-    tools_registry: &[Box<dyn Tool>],
-    observer: &dyn Observer,
-    provider_name: &str,
-    model: &str,
-    temperature: f64,
-    silent: bool,
-    channel_name: &str,
-    channel_reply_target: Option<&str>,
-    multimodal_config: &crate::config::MultimodalConfig,
-    max_tool_iterations: usize,
-    approval: Option<&ApprovalManager>,
-    excluded_tools: &[String],
-    dedup_exempt_tools: &[String],
-    activated_tools: Option<&std::sync::Arc<std::sync::Mutex<crate::tools::ActivatedToolSet>>>,
-    model_switch_callback: Option<ModelSwitchCallback>,
-) -> Result<String> {
+pub(crate) struct AgentTurnRequest<'a> {
+    pub provider: &'a dyn Provider,
+    pub history: &'a mut Vec<ChatMessage>,
+    pub tools_registry: &'a [Box<dyn Tool>],
+    pub observer: &'a dyn Observer,
+    pub provider_name: &'a str,
+    pub model: &'a str,
+    pub temperature: f64,
+    pub silent: bool,
+    pub channel_name: &'a str,
+    pub channel_reply_target: Option<&'a str>,
+    pub multimodal_config: &'a crate::config::MultimodalConfig,
+    pub max_tool_iterations: usize,
+    pub approval: Option<&'a ApprovalManager>,
+    pub excluded_tools: &'a [String],
+    pub dedup_exempt_tools: &'a [String],
+    pub activated_tools:
+        Option<&'a std::sync::Arc<std::sync::Mutex<crate::tools::ActivatedToolSet>>>,
+    pub model_switch_callback: Option<ModelSwitchCallback>,
+}
+
+pub(crate) async fn agent_turn(request: AgentTurnRequest<'_>) -> Result<String> {
     run_tool_call_loop(
-        provider,
-        history,
-        tools_registry,
-        observer,
-        provider_name,
-        model,
-        temperature,
-        silent,
-        approval,
-        channel_name,
-        channel_reply_target,
-        multimodal_config,
-        max_tool_iterations,
+        request.provider,
+        request.history,
+        request.tools_registry,
+        request.observer,
+        request.provider_name,
+        request.model,
+        request.temperature,
+        request.silent,
+        request.approval,
+        request.channel_name,
+        request.channel_reply_target,
+        request.multimodal_config,
+        request.max_tool_iterations,
         None,
         None,
         None,
-        excluded_tools,
-        dedup_exempt_tools,
-        activated_tools,
-        model_switch_callback,
+        request.excluded_tools,
+        request.dedup_exempt_tools,
+        request.activated_tools,
+        request.model_switch_callback,
         &crate::config::PacingConfig::default(),
     )
     .await
@@ -1263,7 +1036,7 @@ pub(crate) async fn run_tool_call_loop(
 
             // ── Progress: tool start ────────────────────────────
             if let Some(ref tx) = on_delta {
-                let hint = truncate_tool_args_for_progress(&tool_name, &tool_args, 60);
+                let hint = truncate_tool_args_for_progress(&tool_args, 60);
                 let progress = if hint.is_empty() {
                     format!("\u{23f3} {}\n", tool_name)
                 } else {
@@ -2576,25 +2349,25 @@ pub async fn process_message(
         excluded_tools.extend(config.autonomy.non_cli_excluded_tools.iter().cloned());
     }
 
-    agent_turn(
-        provider.as_ref(),
-        &mut history,
-        &tools_registry,
-        observer.as_ref(),
+    agent_turn(AgentTurnRequest {
+        provider: provider.as_ref(),
+        history: &mut history,
+        tools_registry: &tools_registry,
+        observer: observer.as_ref(),
         provider_name,
-        &model_name,
-        config.default_temperature,
-        true,
-        "daemon",
-        None,
-        &config.multimodal,
-        config.agent.max_tool_iterations,
-        Some(&approval_manager),
-        &excluded_tools,
-        &config.agent.tool_call_dedup_exempt,
-        activated_handle_pm.as_ref(),
-        None,
-    )
+        model: &model_name,
+        temperature: config.default_temperature,
+        silent: true,
+        channel_name: "daemon",
+        channel_reply_target: None,
+        multimodal_config: &config.multimodal,
+        max_tool_iterations: config.agent.max_tool_iterations,
+        approval: Some(&approval_manager),
+        excluded_tools: &excluded_tools,
+        dedup_exempt_tools: &config.agent.tool_call_dedup_exempt,
+        activated_tools: activated_handle_pm.as_ref(),
+        model_switch_callback: None,
+    })
     .await
 }
 
@@ -3961,25 +3734,25 @@ mod tests {
             ];
             let observer = NoopObserver;
 
-            let result = agent_turn(
-                &provider,
-                &mut history,
-                &tools_registry,
-                &observer,
-                "mock-provider",
-                "mock-model",
-                0.0,
-                true,
-                "daemon",
-                None,
-                &crate::config::MultimodalConfig::default(),
-                4,
-                None,
-                &[],
-                &[],
-                Some(&activated),
-                None,
-            )
+            let result = agent_turn(AgentTurnRequest {
+                provider: &provider,
+                history: &mut history,
+                tools_registry: &tools_registry,
+                observer: &observer,
+                provider_name: "mock-provider",
+                model: "mock-model",
+                temperature: 0.0,
+                silent: true,
+                channel_name: "daemon",
+                channel_reply_target: None,
+                multimodal_config: &crate::config::MultimodalConfig::default(),
+                max_tool_iterations: 4,
+                approval: None,
+                excluded_tools: &[],
+                dedup_exempt_tools: &[],
+                activated_tools: Some(&activated),
+                model_switch_callback: None,
+            })
             .await
             .expect("wrapper path should execute activated tools");
 
