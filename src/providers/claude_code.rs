@@ -106,9 +106,9 @@ impl ClaudeCodeProvider {
                 (temperature - **a)
                     .abs()
                     .partial_cmp(&(temperature - **b).abs())
-                    .unwrap()
+                    .unwrap_or(std::cmp::Ordering::Equal)
             })
-            .unwrap();
+            .expect("BUG: CLAUDE_CODE_SUPPORTED_TEMPERATURES is non-empty");
         tracing::debug!(
             requested = temperature,
             clamped = clamped,

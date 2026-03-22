@@ -521,7 +521,9 @@ impl Channel for WhatsAppWebChannel {
                 let client_clone = client.clone();
                 let to_clone = to.clone();
                 let recipient = message.recipient.clone();
-                let tts_config = self.tts_config.clone().unwrap();
+                let Some(tts_config) = self.tts_config.clone() else {
+                    return Ok(());
+                };
                 tokio::spawn(async move {
                     // Wait 10 seconds — long enough for the agent to finish its
                     // full tool chain and send the final answer.

@@ -385,11 +385,9 @@ impl AnthropicProvider {
                         .last()
                         .is_some_and(|m| m.role == tool_msg.role)
                     {
-                        native_messages
-                            .last_mut()
-                            .unwrap()
-                            .content
-                            .extend(tool_msg.content);
+                        if let Some(last) = native_messages.last_mut() {
+                            last.content.extend(tool_msg.content);
+                        }
                     } else {
                         native_messages.push(tool_msg);
                     }
@@ -463,11 +461,9 @@ impl AnthropicProvider {
                     // when a user message immediately follows tool results
                     // which are also role "user" in Anthropic's format).
                     if native_messages.last().is_some_and(|m| m.role == "user") {
-                        native_messages
-                            .last_mut()
-                            .unwrap()
-                            .content
-                            .extend(content_blocks);
+                        if let Some(last) = native_messages.last_mut() {
+                            last.content.extend(content_blocks);
+                        }
                     } else {
                         native_messages.push(NativeMessage {
                             role: "user".to_string(),

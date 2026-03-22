@@ -42,7 +42,9 @@ impl HookHandler for CommandLoggerHook {
             result.success,
         );
         tracing::info!(hook = "command-logger", "{}", entry);
-        self.log.lock().unwrap().push(entry);
+        if let Ok(mut log) = self.log.lock() {
+            log.push(entry);
+        }
     }
 }
 
