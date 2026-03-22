@@ -63,11 +63,11 @@ pub struct BrowserTool {
     allowed_domains: Vec<String>,
     session_name: Option<String>,
     backend: String,
-    #[allow(dead_code)] // used when browser-native feature is enabled
+    #[cfg(feature = "browser-native")]
     native_headless: bool,
-    #[allow(dead_code)] // used when browser-native feature is enabled
+    #[cfg(feature = "browser-native")]
     native_webdriver_url: String,
-    #[allow(dead_code)] // used when browser-native feature is enabled
+    #[cfg(feature = "browser-native")]
     native_chrome_path: Option<String>,
     computer_use: ComputerUseConfig,
     #[cfg(feature = "browser-native")]
@@ -228,13 +228,19 @@ impl BrowserTool {
         native_chrome_path: Option<String>,
         computer_use: ComputerUseConfig,
     ) -> Self {
+        #[cfg(not(feature = "browser-native"))]
+        let _ = (native_headless, &native_webdriver_url, &native_chrome_path);
+
         Self {
             security,
             allowed_domains: normalize_domains(allowed_domains),
             session_name,
             backend,
+            #[cfg(feature = "browser-native")]
             native_headless,
+            #[cfg(feature = "browser-native")]
             native_webdriver_url,
+            #[cfg(feature = "browser-native")]
             native_chrome_path,
             computer_use,
             #[cfg(feature = "browser-native")]
@@ -1988,7 +1994,7 @@ fn unavailable_action_for_backend_error(action: &str, backend: ResolvedBackend) 
     )
 }
 
-#[allow(dead_code)] // used when browser-native feature is enabled
+#[cfg(any(feature = "browser-native", test))]
 fn is_recoverable_rust_native_error(err: &anyhow::Error) -> bool {
     let message = format!("{err:#}").to_ascii_lowercase();
 
