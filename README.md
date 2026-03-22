@@ -359,7 +359,7 @@ This project ships as one product (**R.A.I.N. Lab**) built from two layers:
 | Layer | What it does | Language |
 |---|---|---|
 | **James Library** | Research workflows — lab meetings, synthesis, acoustic physics | Python |
-| **R.A.I.N.** | Agent runtime — orchestration, tools, channels, memory, security | Rust (optional) |
+| **ZeroClaw** | Agent runtime — orchestration, tools, channels, memory, security | Rust |
 
 You interact with R.A.I.N. Lab as a single product. The Python layer handles research workflows and delegates to the Rust runtime for fast orchestration when available. **Python research flows work without Rust installed** — the Rust runtime adds speed, channels, and tool execution for advanced users.
 
