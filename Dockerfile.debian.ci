@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the pre-built binary for this platform (amd64 or arm64)
-COPY bin/${TARGETARCH}/R.A.I.N. /usr/local/bin/R.A.I.N.
+COPY bin/${TARGETARCH}/rain /usr/local/bin/rain
 
 # Runtime directory structure and default config
 COPY --chown=65534:65534 R.A.I.N.-data/ /R.A.I.N.-data/
@@ -30,5 +30,5 @@ ENV R.A.I.N._GATEWAY_PORT=42617
 WORKDIR /R.A.I.N.-data
 USER 65534:65534
 EXPOSE 42617
-ENTRYPOINT ["R.A.I.N."]
+ENTRYPOINT ["rain"]
 CMD ["gateway"]
