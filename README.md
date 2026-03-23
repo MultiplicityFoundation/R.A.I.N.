@@ -111,7 +111,7 @@ pub extern "C" fn verify_logic(input_ptr: *const c_char) -> *mut c_char { ... }
 
 ## Who is this for?
 
-* **Academic Researchers:** Run automated, 6-round peer reviews on your thesis against a local library of ArXiv PDFs before you ever show it to your advisor.
+* **Academic Researchers:** Run automated, 6-round peer reviews on your thesis against a local library of ArXiv papers before you ever show it to your advisor.
 * **Math & Physics R&D:** Use the WASM plugin system to let the AI run overnight simulations in Lean, Coq, or custom Rust physics engines.
 * **Privacy-Conscious Enterprise:** Analyze sensitive datasets without sending a single byte to an external API.
 
