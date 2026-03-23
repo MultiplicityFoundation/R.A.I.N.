@@ -20,7 +20,7 @@
   <a href="README.vi.md">Tiếng Việt</a>
 </p>
 
-R.A.I.N. Lab is an open-source, local-first AI research system built for **academic researchers, R&D teams, and privacy-conscious individuals** who need conclusions they can actually trust. Instead of letting agents agree too quickly or argue in circles forever, R.A.I.N. Lab forces unresolved debates toward resolution by translating disagreements into formal logic and settling them with a sandboxed verification engine.
+Vers3Dynamics' R.A.I.N. Lab is a local-first AI research system built for **academic researchers, R&D teams, and privacy-conscious individuals** who need conclusions they can actually trust. Instead of letting agents agree too quickly or argue in circles forever, R.A.I.N. Lab forces unresolved debates toward resolution by translating disagreements into formal logic and settling them with a sandboxed verification engine.
 
 Your data stays on your machine by default. The system runs locally, keeps conversations and files under your control, and only talks to external providers when you explicitly configure them.
 
