@@ -376,8 +376,7 @@ impl PluginHost {
             if !base.path().ends_with('/') {
                 base.set_path(&format!("{}/", base.path()));
             }
-            base
-                .join("manifest.toml")
+            base.join("manifest.toml")
                 .map_err(|e| PluginError::LoadFailed(format!("invalid marketplace URL: {e}")))?
         };
 
@@ -397,8 +396,6 @@ impl PluginHost {
         Ok(manifest_path)
     }
 
-    fn fetch_marketplace_file(
-        &self,
     fn fetch_marketplace_file(
         &self,
         source: &Url,

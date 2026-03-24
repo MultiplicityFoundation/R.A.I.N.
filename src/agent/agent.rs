@@ -3,6 +3,7 @@ use crate::agent::dispatcher::{
 };
 use crate::agent::loop_::ModelSwitchState;
 use crate::agent::manifest::AgentManifest;
+use crate::agent::manifest_loader;
 use crate::agent::memory_loader::{DefaultMemoryLoader, ManifestMemoryLoader, MemoryLoader};
 use crate::agent::prompt::{PromptContext, SystemPromptBuilder};
 use crate::config::Config;
@@ -58,9 +59,7 @@ fn load_agent_manifest(workspace_dir: &Path) -> Result<Option<AgentManifest>> {
     if !manifest_path.exists() {
         return Ok(None);
     }
-    let raw = std::fs::read_to_string(&manifest_path)?;
-    let manifest: AgentManifest = toml::from_str(&raw)?;
-    Ok(Some(manifest))
+    Ok(Some(manifest_loader::load_manifest(&manifest_path)?))
 }
 
 pub struct AgentBuilder {
@@ -629,6 +628,13 @@ impl Agent {
         let mut prompt = self.prompt_builder.build(&ctx)?;
         if let Some(manifest) = self.manifest.as_ref() {
             prompt.push_str("\n\n## Agent Manifest Identity\n\n");
+            let name = manifest.identity.name.as_deref().unwrap_or("Unnamed agent");
+            let role = manifest.identity.role.as_deref().unwrap_or("unspecified");
+            let system_prompt = manifest
+                .identity
+                .system_prompt
+                .as_deref()
+                .unwrap_or("No manifest system prompt provided.");
             let _ = write!(
                 prompt,
                 "- Agent: {}\n- Role: {}\n\n{}",
