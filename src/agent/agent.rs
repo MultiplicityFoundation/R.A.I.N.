@@ -1542,7 +1542,7 @@ mod tests {
 schema_version = "1.0"
 
 [identity]
-name = "James"
+name = "R.A.I.N.Agent"
 role = "Lead Scientist"
 system_prompt = "Focus on resonance."
 
@@ -1561,8 +1561,8 @@ category = "core"
             .expect("manifest should parse")
             .expect("manifest should exist");
 
-        assert_eq!(parsed.identity.name.as_deref(), Some("James"));
-        assert_eq!(parsed.tools.allow, vec!["file_read", "web_search"]);
+        assert_eq!(parsed.identity.name.as_deref(), Some("R.A.I.N.Agent"));
+        assert_eq!(parsed.tools.allow, vec!["file_read", "shell"]);
         let memory = parsed.memory.expect("memory config should be present");
         assert_eq!(memory.recall_limit, Some(8));
         assert_eq!(memory.min_relevance_score, Some(0.6));
