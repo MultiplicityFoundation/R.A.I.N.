@@ -3,6 +3,7 @@ use crate::agent::dispatcher::{
 };
 use crate::agent::loop_::ModelSwitchState;
 use crate::agent::manifest::AgentManifest;
+use crate::agent::manifest_loader;
 use crate::agent::memory_loader::{DefaultMemoryLoader, ManifestMemoryLoader, MemoryLoader};
 use crate::agent::prompt::{PromptContext, SystemPromptBuilder};
 use crate::config::Config;
@@ -14,7 +15,6 @@ use crate::runtime;
 use crate::security::SecurityPolicy;
 use crate::tools::{self, Tool, ToolSpec};
 use anyhow::Result;
-use serde::Deserialize;
 use std::collections::HashMap;
 use std::fmt::Write as FmtWrite;
 use std::io::Write as IoWrite;
@@ -54,46 +54,12 @@ pub struct Agent {
     manifest: Option<AgentManifest>,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
-pub struct AgentManifest {
-    pub schema_version: String,
-    pub identity: AgentIdentityManifest,
-    #[serde(default)]
-    pub tools: AgentToolScopeManifest,
-    #[serde(default)]
-    pub memory: AgentMemoryRoutingManifest,
-}
-
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
-pub struct AgentIdentityManifest {
-    pub id: String,
-    pub display_name: String,
-    pub role: String,
-    pub system_prompt: String,
-}
-
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq, Default)]
-pub struct AgentToolScopeManifest {
-    #[serde(default)]
-    pub allowed: Vec<String>,
-}
-
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq, Default)]
-pub struct AgentMemoryRoutingManifest {
-    #[serde(default)]
-    pub categories: Vec<String>,
-    #[serde(default)]
-    pub session_id: Option<String>,
-}
-
 fn load_agent_manifest(workspace_dir: &Path) -> Result<Option<AgentManifest>> {
     let manifest_path = workspace_dir.join("agent_manifest.toml");
     if !manifest_path.exists() {
         return Ok(None);
     }
-    let raw = std::fs::read_to_string(&manifest_path)?;
-    let manifest: AgentManifest = toml::from_str(&raw)?;
-    Ok(Some(manifest))
+    Ok(Some(manifest_loader::load_manifest(&manifest_path)?))
 }
 
 pub struct AgentBuilder {
@@ -458,11 +424,11 @@ impl Agent {
 
         let manifest = load_agent_manifest(&config.workspace_dir)?;
         if let Some(agent_manifest) = manifest.as_ref() {
-            if !agent_manifest.tools.allowed.is_empty() {
+            if !agent_manifest.tools.allow.is_empty() {
                 tools.retain(|tool| {
                     agent_manifest
                         .tools
-                        .allowed
+                        .allow
                         .iter()
                         .any(|allowed| allowed == tool.name())
                 });
@@ -608,7 +574,6 @@ impl Agent {
             .build()?;
 
         if let Some(agent_manifest) = manifest {
-            agent.memory_session_id = agent_manifest.memory.session_id.clone();
             agent.manifest = Some(agent_manifest);
         }
 
@@ -663,13 +628,17 @@ impl Agent {
         let mut prompt = self.prompt_builder.build(&ctx)?;
         if let Some(manifest) = self.manifest.as_ref() {
             prompt.push_str("\n\n## Agent Manifest Identity\n\n");
+            let name = manifest.identity.name.as_deref().unwrap_or("Unnamed agent");
+            let role = manifest.identity.role.as_deref().unwrap_or("unspecified");
+            let system_prompt = manifest
+                .identity
+                .system_prompt
+                .as_deref()
+                .unwrap_or("No manifest system prompt provided.");
             let _ = write!(
                 prompt,
-                "- Agent: {} ({})\n- Role: {}\n\n{}",
-                manifest.identity.display_name,
-                manifest.identity.id,
-                manifest.identity.role,
-                manifest.identity.system_prompt
+                "- Agent: {}\n- Role: {}\n\n{}",
+                name, role, system_prompt
             );
         }
         Ok(prompt)
@@ -1573,18 +1542,21 @@ mod tests {
 schema_version = "1.0"
 
 [identity]
-id = "james"
-display_name = "James"
-role = "Lead Scientist"
+name = "R.A.I.N.Agent"
+role = "R.A.I.N.Maintainer"
 system_prompt = "Focus on resonance."
 
 [tools]
-allowed = ["file_read", "web_search"]
+allow = ["file_read", "web_search"]
+deny = []
+session_scope = "current"
 
 [memory]
-categories = ["research", "notes"]
-session_id = "lab-session"
-"#;
+category = "core"
+session_scope = "current"
+recall_limit = 3
+min_relevance_score = 0.6
+	"#;
         std::fs::write(dir.path().join("agent_manifest.toml"), manifest)
             .expect("manifest should be written");
 
@@ -1592,12 +1564,11 @@ session_id = "lab-session"
             .expect("manifest should parse")
             .expect("manifest should exist");
 
-        assert_eq!(parsed.identity.id, "james");
-        assert_eq!(parsed.tools.allowed, vec!["file_read", "web_search"]);
-        assert_eq!(
-            parsed.memory.categories,
-            vec!["research".to_string(), "notes".to_string()]
-        );
-        assert_eq!(parsed.memory.session_id.as_deref(), Some("lab-session"));
+        assert_eq!(parsed.identity.name.as_deref(), Some("R.A.I.N.Agent"));
+        assert_eq!(parsed.tools.allow, vec!["file_read", "web_search"]);
+        let memory = parsed.memory.expect("memory should be parsed");
+        assert_eq!(memory.category, Some(crate::memory::MemoryCategory::Core));
+        assert_eq!(memory.recall_limit, Some(3));
+        assert_eq!(memory.min_relevance_score, Some(0.6));
     }
 }
