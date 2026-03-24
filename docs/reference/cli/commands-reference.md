@@ -24,6 +24,8 @@ Last verified: **February 21, 2026**.
 | `skills` | List/install/remove skills |
 | `migrate` | Import from external runtimes (currently OpenClaw) |
 | `config` | Export machine-readable config schema |
+| `update` | Check for and apply binary updates |
+| `self-test` | Run diagnostic checks |
 | `completions` | Generate shell completion scripts to stdout |
 | `hardware` | Discover and introspect USB hardware |
 | `peripheral` | Configure and flash peripherals |
@@ -184,6 +186,22 @@ Skill manifests (`SKILL.toml`) support `prompts` and `[[tools]]`; both are injec
 - `R.A.I.N. config schema`
 
 `config schema` prints a JSON Schema (draft 2020-12) for the full `config.toml` contract to stdout.
+
+### `update`
+
+- `R.A.I.N. update`
+- `R.A.I.N. update --check`
+- `R.A.I.N. update --force`
+- `R.A.I.N. update --version <SEMVER>`
+
+`update` runs a 6-phase self-update pipeline (preflight, download, backup, validate, swap, smoke test) with rollback on failures.
+
+### `self-test`
+
+- `R.A.I.N. self-test`
+- `R.A.I.N. self-test --quick`
+
+`self-test --quick` skips network checks for faster offline validation.
 
 ### `completions`
 
