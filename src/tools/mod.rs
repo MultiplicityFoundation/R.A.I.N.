@@ -1371,12 +1371,7 @@ mod tests {
                 name: "filesystem__read_file".into(),
             }),
         ];
-        let filtered = filter_tool_pool(
-            pool,
-            &[String::from("mcp:browser/*")],
-            &[],
-            &[String::from("mcp_all")],
-        );
+        let filtered = filter_tool_pool(pool, &[String::from("mcp:browser/*")], &[], &[]);
         let names: Vec<&str> = filtered.iter().map(|t| t.name()).collect();
         assert_eq!(names, vec!["browser__navigate"]);
     }
