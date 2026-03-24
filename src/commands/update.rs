@@ -264,6 +264,7 @@ async fn smoke_test(binary: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn test_version_comparison() {
@@ -272,5 +273,61 @@ mod tests {
         assert!(!version_is_newer("0.5.0", "0.4.3"));
         assert!(!version_is_newer("0.4.3", "0.4.3"));
         assert!(version_is_newer("1.0.0", "2.0.0"));
+    }
+
+    #[test]
+    fn test_version_comparison_ignores_non_numeric_segments() {
+        assert!(version_is_newer("1.0.0", "1.1.0-beta"));
+        assert!(!version_is_newer("1.2.0", "v1.2.0"));
+    }
+
+    #[test]
+    fn test_find_asset_url_matches_current_platform_target() {
+        let target = if cfg!(target_os = "macos") {
+            if cfg!(target_arch = "aarch64") {
+                "aarch64-apple-darwin"
+            } else {
+                "x86_64-apple-darwin"
+            }
+        } else if cfg!(target_os = "linux") {
+            if cfg!(target_arch = "aarch64") {
+                "aarch64-unknown-linux"
+            } else {
+                "x86_64-unknown-linux"
+            }
+        } else {
+            return;
+        };
+
+        let release = json!({
+            "assets": [
+                {
+                    "name": format!("rain-{target}.tar.gz"),
+                    "browser_download_url": "https://example.com/rain.tar.gz"
+                },
+                {
+                    "name": "rain-other-platform.tar.gz",
+                    "browser_download_url": "https://example.com/other.tar.gz"
+                }
+            ]
+        });
+
+        let url = find_asset_url(&release);
+        assert_eq!(url.as_deref(), Some("https://example.com/rain.tar.gz"));
+    }
+
+    #[test]
+    fn test_find_asset_url_returns_none_when_no_match() {
+        let release = json!({
+            "assets": [
+                {
+                    "name": "rain-unsupported-target.tar.gz",
+                    "browser_download_url": "https://example.com/rain.tar.gz"
+                }
+            ]
+        });
+
+        let url = find_asset_url(&release);
+        assert!(url.is_none());
     }
 }

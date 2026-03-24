@@ -531,7 +531,7 @@ The script is printed to stdout so it can be sourced directly:
 Examples:
   source <(rain completions bash)
   rain completions zsh > ~/.zfunc/_rain
-  rain completions fish > ~/.config/fish/completions/R.A.I.N..fish")]
+  rain completions fish > ~/.config/fish/completions/R.A.I.N.fish")]
     Completions {
         /// Target shell
         #[arg(value_enum)]

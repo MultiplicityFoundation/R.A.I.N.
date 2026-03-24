@@ -1,5 +1,24 @@
 #[allow(clippy::wildcard_imports)]
 use crate::*;
+use std::io::{self, IsTerminal, Write};
+
+fn confirm_update(force: bool) -> Result<bool> {
+    if force {
+        return Ok(true);
+    }
+
+    if !io::stdin().is_terminal() {
+        bail!("refusing to run update without confirmation in non-interactive mode; pass --force to continue");
+    }
+
+    print!("Proceed with update? [y/N]: ");
+    io::stdout().flush()?;
+
+    let mut answer = String::new();
+    io::stdin().read_line(&mut answer)?;
+    let trimmed = answer.trim().to_ascii_lowercase();
+    Ok(trimmed == "y" || trimmed == "yes")
+}
 
 pub(crate) async fn dispatch_command(command: Commands, config: Config) -> Result<()> {
     match command {
@@ -389,7 +408,7 @@ pub(crate) async fn dispatch_command(command: Commands, config: Config) -> Resul
 
         Commands::Update {
             check,
-            force: _force,
+            force,
             version,
         } => {
             if check {
@@ -404,6 +423,10 @@ pub(crate) async fn dispatch_command(command: Commands, config: Config) -> Resul
                 }
                 Ok(())
             } else {
+                if !confirm_update(force)? {
+                    println!("Update cancelled.");
+                    return Ok(());
+                }
                 commands::update::run(version.as_deref()).await
             }
         }
