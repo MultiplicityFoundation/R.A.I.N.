@@ -150,6 +150,14 @@ impl PluginHost {
         }
 
         let manifest = self.load_manifest(&manifest_path)?;
+
+        // Validate manifest fields against path traversal before any file operations.
+        validate_relative_path(&manifest.name, "plugin name")?;
+        validate_relative_path(&manifest.wasm_path, "wasm_path")?;
+        for agent_manifest in &manifest.agent_manifests {
+            validate_relative_path(agent_manifest, "agent_manifests entry")?;
+        }
+
         self.validate_requested_permissions(&manifest, allowed_permissions)?;
         let source_dir = manifest_path
             .parent()
@@ -351,8 +359,8 @@ impl PluginHost {
         let manifest_url = if source.path().ends_with("manifest.toml") {
             source.clone()
         } else {
-            source
-                .join("manifest.toml")
+            let base = ensure_trailing_slash(source);
+            base.join("manifest.toml")
                 .map_err(|e| PluginError::LoadFailed(format!("invalid marketplace URL: {e}")))?
         };
 
@@ -378,7 +386,9 @@ impl PluginHost {
         staging_dir: &Path,
         relative_path: &str,
     ) -> Result<PathBuf, PluginError> {
-        let remote = source.join(relative_path).map_err(|e| {
+        validate_relative_path(relative_path, "marketplace artifact path")?;
+        let base = ensure_trailing_slash(source);
+        let remote = base.join(relative_path).map_err(|e| {
             PluginError::LoadFailed(format!("invalid marketplace artifact URL: {e}"))
         })?;
         let bytes = reqwest::blocking::get(remote.clone())
@@ -395,6 +405,39 @@ impl PluginHost {
         std::fs::write(&local, bytes)?;
         Ok(local)
     }
+}
+
+/// Ensure a URL ends with a trailing slash so that `Url::join` appends
+/// rather than replacing the last path segment (RFC 3986 behaviour).
+fn ensure_trailing_slash(url: &Url) -> Url {
+    let mut base = url.clone();
+    if !base.path().ends_with('/') {
+        base.set_path(&format!("{}/", base.path()));
+    }
+    base
+}
+
+/// Reject paths that could escape the target directory.
+fn validate_relative_path(path: &str, field_name: &str) -> Result<(), PluginError> {
+    if path.is_empty() {
+        return Err(PluginError::InvalidManifest(format!(
+            "{field_name} must not be empty"
+        )));
+    }
+    let p = std::path::Path::new(path);
+    if p.is_absolute() {
+        return Err(PluginError::InvalidManifest(format!(
+            "{field_name} contains absolute path: {path}"
+        )));
+    }
+    for component in p.components() {
+        if matches!(component, std::path::Component::ParentDir) {
+            return Err(PluginError::InvalidManifest(format!(
+                "{field_name} contains path traversal (..): {path}"
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn parse_marketplace_source(source: &str) -> Option<Url> {
