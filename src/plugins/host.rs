@@ -359,8 +359,12 @@ impl PluginHost {
         let manifest_url = if source.path().ends_with("manifest.toml") {
             source.clone()
         } else {
-            let base = ensure_trailing_slash(source);
-            base.join("manifest.toml")
+            let mut base = source.clone();
+            if !base.path().ends_with('/') {
+                base.set_path(&format!("{}/", base.path()));
+            }
+            base
+                .join("manifest.toml")
                 .map_err(|e| PluginError::LoadFailed(format!("invalid marketplace URL: {e}")))?
         };
 
