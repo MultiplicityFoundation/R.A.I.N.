@@ -386,12 +386,16 @@ impl PluginHost {
 
     fn fetch_marketplace_file(
         &self,
+    fn fetch_marketplace_file(
+        &self,
         source: &Url,
         staging_dir: &Path,
         relative_path: &str,
     ) -> Result<PathBuf, PluginError> {
-        validate_relative_path(relative_path, "marketplace artifact path")?;
-        let base = ensure_trailing_slash(source);
+        let mut base = source.clone();
+        if !base.path().ends_with('/') {
+            base.set_path(&format!("{}/", base.path()));
+        }
         let remote = base.join(relative_path).map_err(|e| {
             PluginError::LoadFailed(format!("invalid marketplace artifact URL: {e}"))
         })?;
