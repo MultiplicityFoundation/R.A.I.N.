@@ -13,11 +13,11 @@
 
 <p align="center">
   Languages:
-  <a href="README.zh-CN.md">Chinese</a> |
-  <a href="README.ja.md">Japanese</a> |
-  <a href="README.ru.md">Russian</a> |
-  <a href="README.fr.md">French</a> |
-  <a href="README.vi.md">Vietnamese</a>
+  <a href="README.zh-CN.md">简体中文</a> |
+  <a href="README.ja.md">日本語</a> |
+  <a href="README.ru.md">Русский</a> |
+  <a href="README.fr.md">Français</a> |
+  <a href="README.vi.md">Tiếng Việt</a>
 </p>
 
 R.A.I.N. Lab is a local-first AI research lab for people who want more than a single chatbot answer.
