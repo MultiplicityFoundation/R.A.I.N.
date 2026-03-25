@@ -11,8 +11,8 @@ Merge-blocking checks should stay small and deterministic. Optional checks are u
 ### Merge-Blocking
 
 - `.github/workflows/ci-run.yml` (`CI`)
-    - Purpose: stable-core Rust validation (`cargo fmt --all -- --check`, `cargo clippy --locked --all-targets -- -D clippy::correctness`, strict delta lint gate on changed Rust lines, `test`, release build smoke) + docs quality checks when docs change (`markdownlint` blocks only issues on changed lines; link check scans only links added on changed lines)
-    - Additional behavior: for Rust-impacting PRs and pushes, `CI Required Gate` requires the stable-core lint/test/build/docs jobs; the broad `check-all-features` sweep is advisory
+    - Purpose: stable-core validation (`cargo fmt --all -- --check`, `cargo clippy --locked --all-targets -- -D clippy::correctness`, `bash scripts/ci/stable_core_smoke.sh`, strict delta lint gate on changed Rust lines, `test`, release build smoke) + docs quality checks when docs change (`markdownlint` blocks only issues on changed lines; link check scans only links added on changed lines)
+    - Additional behavior: for Rust-impacting PRs and pushes, `CI Required Gate` requires the stable-core lint/smoke/test/build/docs jobs; the broad `check-all-features` sweep is advisory
     - Additional behavior: PRs that change `.github/workflows/**` require at least one approving review from a login in `WORKFLOW_OWNER_LOGINS` (repository variable fallback: `theonlyhennygod,JordanTheJet,SimianAstronaut7`)
     - Additional behavior: lint gates run before `test`/`build`; when lint/docs gates fail on PRs, CI posts an actionable feedback comment with failing gate names and local fix commands
     - Merge gate: `CI Required Gate`
@@ -114,6 +114,7 @@ Merge-blocking checks should stay small and deterministic. Optional checks are u
 - Keep merge-blocking checks deterministic and reproducible (`--locked` where applicable).
 - Follow [`docs/contributing/release-process.md`](./release-process.md) for verify-before-publish release cadence and tag discipline.
 - Keep merge-blocking rust quality policy aligned across `.github/workflows/ci-run.yml`, `dev/ci.sh`, and `.githooks/pre-push` (`./scripts/ci/rust_quality_gate.sh` + `./scripts/ci/rust_strict_delta_gate.sh`).
+- Keep the stable-core runtime smoke gate aligned across `.github/workflows/ci-run.yml`, `.github/workflows/checks-on-pr.yml`, and release workflows (`./scripts/ci/stable_core_smoke.sh`).
 - Use `./scripts/ci/rust_strict_delta_gate.sh` (or `./dev/ci.sh lint-delta`) as the incremental strict merge gate for changed Rust lines.
 - Run full strict lint audits regularly via `./scripts/ci/rust_quality_gate.sh --strict` (for example through `./dev/ci.sh lint-strict`) and track cleanup in focused PRs.
 - Keep docs markdown gating incremental via `./scripts/ci/docs_quality_gate.sh` (block changed-line issues, report baseline issues separately).

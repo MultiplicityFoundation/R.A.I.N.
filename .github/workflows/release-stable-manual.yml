@@ -75,6 +75,37 @@ jobs:
           path: web/dist/
           retention-days: 1
 
+  stable-core-smoke:
+    name: Stable Core Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements-pinned.txt
+            requirements.txt
+            requirements-dev-pinned.txt
+            requirements-dev.txt
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements-pinned.txt ]; then
+            pip install -r requirements-pinned.txt
+          else
+            pip install -r requirements.txt
+          fi
+          if [ -f requirements-dev-pinned.txt ]; then
+            pip install -r requirements-dev-pinned.txt
+          else
+            pip install -r requirements-dev.txt
+          fi
+      - name: Run stable-core smoke tests
+        run: bash scripts/ci/stable_core_smoke.sh
+
   release-notes:
     name: Generate Release Notes
     runs-on: ubuntu-latest
@@ -150,7 +181,7 @@ jobs:
 
   build:
     name: Build ${{ matrix.target }}
-    needs: [validate, web]
+    needs: [validate, web, stable-core-smoke]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     strategy:

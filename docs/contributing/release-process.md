@@ -2,7 +2,7 @@
 
 This runbook defines the maintainers' standard release flow.
 
-Last verified: **February 21, 2026**.
+Last verified: **March 24, 2026**.
 
 ## Release Goals
 
@@ -22,6 +22,7 @@ Last verified: **February 21, 2026**.
 Release automation lives in:
 
 - `.github/workflows/pub-release.yml`
+- `.github/workflows/release-stable-manual.yml`
 - `.github/workflows/pub-homebrew-core.yml` (manual Homebrew formula PR, bot-owned)
 - `.github/workflows/pub-scoop.yml` (manual Scoop bucket manifest update)
 - `.github/workflows/pub-aur.yml` (manual AUR PKGBUILD push)
@@ -37,6 +38,7 @@ Publish-mode guardrails:
 - Tag must match semver-like format `vX.Y.Z[-suffix]`.
 - Tag must already exist on origin.
 - Tag commit must be reachable from `origin/main`.
+- Stable-core smoke must pass on the release ref before artifact builds proceed.
 - Matching GHCR image tag (`ghcr.io/<owner>/<repo>:<tag>`) must be available before GitHub Release publish completes.
 - Artifacts are verified before publish.
 
@@ -45,8 +47,9 @@ Publish-mode guardrails:
 ### 1) Preflight on `main`
 
 1. Ensure required checks are green on latest `main`.
-2. Confirm no high-priority incidents or known regressions are open.
-3. Confirm installer and Docker workflows are healthy on recent `main` commits.
+2. Ensure the stable-core smoke gate is green on the candidate release ref.
+3. Confirm no high-priority incidents or known regressions are open.
+4. Confirm installer and Docker workflows are healthy on recent `main` commits.
 
 ### 2) Run verification build (no publish)
 
@@ -57,6 +60,7 @@ Run `Pub Release` manually:
 
 Expected outcome:
 
+- Stable-core smoke passes on the chosen release ref.
 - Full target matrix builds successfully.
 - `verify-artifacts` confirms all expected archives exist.
 - No GitHub Release is published.

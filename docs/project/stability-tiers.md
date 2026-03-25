@@ -64,6 +64,15 @@ Expectations:
 - Interfaces should stay coherent with the core runtime.
 - Compatibility is important, but narrower blast radius and platform-specific changes are expected.
 - Validation should focus on the touched integration path rather than the entire lab surface.
+- Each supported extension should keep an explicit owner path in `CODEOWNERS` and a focused validation command or runbook.
+
+## Tier 2 Ownership Contract
+
+Tier 2 is only "supported" when the maintenance path is obvious.
+
+- PRs that change Tier 2 surfaces should name the touched subsystem and owner in the summary or release notes.
+- Each Tier 2 surface should have a narrow validation command, smoke test, or operator runbook that reviewers can point to.
+- If a subsystem has no owner or no repeatable validation path, treat it as Tier 3 until that contract is added.
 
 ## Build Defaults
 
@@ -100,9 +109,9 @@ Expectations:
 Move a path upward only when all of the following are true:
 
 1. It has a clear owner and maintenance path.
-1. It has focused validation, not just ad hoc manual usage.
-1. It is linked from the supported docs flow as an intentional product surface.
-1. Its rollback and compatibility story are understood.
+2. It has focused validation, not just ad hoc manual usage.
+3. It is linked from the supported docs flow as an intentional product surface.
+4. Its rollback and compatibility story are understood.
 
 ## Scope Rule
 

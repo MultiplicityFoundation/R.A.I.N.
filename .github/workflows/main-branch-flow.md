@@ -37,9 +37,9 @@ R.A.I.N. uses a **single default branch** model:
    - `pr-labeler.yml` applies managed size/risk/scope/module labels.
    - `pr-auto-response.yml` handles first-interaction guidance and label-driven routing.
 3. `pull_request` CI runs against the PR head:
-   - `ci-run.yml` provides the merge-blocking Rust/docs gate.
+   - `ci-run.yml` provides the merge-blocking stable-core gate (Rust/docs + stable-core smoke).
    - `checks-on-pr.yml` runs the standalone quality gate matrix.
-   - `ci.yml` runs Python integrity, `ruff`, and `pytest` checks.
+   - `ci.yml` runs broader Python integrity, `ruff`, and `pytest` checks.
    - `sec-audit.yml` runs dependency/license security checks when its path filters match.
    - `pub-docker-img.yml` runs a smoke build when Docker inputs change.
 4. Maintainers merge only after the required review and branch-protection checks pass.
@@ -49,7 +49,7 @@ R.A.I.N. uses a **single default branch** model:
 
 1. A reviewed change lands on `main`.
 2. Push-triggered automation runs:
-   - `ci-run.yml` validates the merged state.
+   - `ci-run.yml` validates the merged state, including the stable-core smoke lane.
    - `release-beta-on-push.yml` builds and publishes the beta release artifacts for the latest `main` commit.
    - `sec-audit.yml` runs when security-sensitive paths changed.
    - `publish-crates-auto.yml` publishes crates.io updates after a version bump in `Cargo.toml`.
@@ -104,6 +104,6 @@ flowchart TD
 ## Quick Troubleshooting
 
 1. **PR blocked before CI finishes**: inspect the sticky comment from `pr-intake-checks.yml` and label automation runs.
-2. **Required checks failing on a PR**: start with `ci-run.yml`, then `checks-on-pr.yml`, then `ci.yml` for Python/ruff/pytest failures.
+2. **Required checks failing on a PR**: start with `ci-run.yml`, then `checks-on-pr.yml`, then `ci.yml` for broader Python/ruff/pytest failures.
 3. **Beta release missing after merge**: confirm the change merged into `main` and inspect `release-beta-on-push.yml`.
 4. **Unexpected promotion-language reference**: treat it as stale documentation and follow this file plus `CONTRIBUTING.md`.

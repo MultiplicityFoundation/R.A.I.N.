@@ -7,11 +7,13 @@ Use this checklist before tagging a public local-first release.
 - [ ] `git status` is clean.
 - [ ] Run full tests: `pytest -q`.
 - [ ] Run lint: `ruff check .`.
+- [ ] Run stable-core smoke gate: `bash scripts/ci/stable_core_smoke.sh`.
 - [ ] Run preflight: `python rain_lab.py --mode preflight`.
 - [ ] Run UI auto smoke test: `python rain_lab.py --mode chat --ui auto --topic "release smoke test"`.
 - [ ] Verify launcher lifecycle log: `meeting_archives/launcher_events.jsonl`.
 - [ ] Run one-screen health check: `python rain_health_check.py`.
 - [ ] Verify backup flow: `python rain_lab.py --mode backup -- --json`.
+- [ ] If Tier 2 integrations changed, review targeted extension checks and note the owner sign-off.
 
 ## 2. Reproducibility
 

@@ -13,7 +13,8 @@ Use this as a pass/fail checklist before calling R.A.I.N. Lab "production-ready.
 | Health snapshot | One-screen health command reports LM Studio/API/model/UI/log status. | `python rain_health_check.py` or `RAIN_Lab_Health_Check.cmd` |
 | Config safety | Runtime config errors are explicit and non-local endpoints require API key. | `python rain_lab.py --mode chat --config bad.toml --topic "test"` |
 | Backup/restore | Backup command returns success and files can be restored. | `python rain_lab.py --mode backup -- --json` and validate restore path. |
-| CI quality gate | Required stable-core checks are green, and advisory extension checks have been reviewed when integration paths changed. | Verify GitHub Actions checks: required gate, lint/test/build flows, and advisory extension sweeps when relevant. |
+| Stable-core smoke | Launcher, runtime, health, backup, and first-run smoke coverage pass on the supported path. | `bash scripts/ci/stable_core_smoke.sh` |
+| CI quality gate | Required stable-core checks are green, and advisory extension checks have been reviewed when integration paths changed. | Verify GitHub Actions checks: required gate, stable-core smoke, lint/test/build flows, and advisory extension sweeps when relevant. |
 | Release hygiene | Changelog and docs match current commands and options. | Review `CHANGELOG.md`, `README.md`, `docs/troubleshooting.md`. |
 
 ## Recommended Launch Defaults
