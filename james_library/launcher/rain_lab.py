@@ -24,6 +24,7 @@ import shutil
 import subprocess
 import sys
 import time
+import webbrowser
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from html import escape as html_escape
@@ -56,6 +57,7 @@ ASCII_ART_LINES = [
 ]
 
 VALID_UI_MODES = {"auto", "on", "off"}
+VALID_BROWSER_MODES = {"auto", "on", "off"}
 BEGINNER_DEBATE_HINTS = (
     "debate",
     "argue",
@@ -279,6 +281,186 @@ def _command_for_mode(mode: str, *, topic: str | None = None, preset: str | None
     return command
 
 
+def _wrap_display_lines(text: str, *, max_chars: int, max_lines: int) -> list[str]:
+    words = " ".join((text or "").split()).split()
+    if not words:
+        return []
+
+    lines: list[str] = []
+    current = words[0]
+    for word in words[1:]:
+        candidate = f"{current} {word}"
+        if len(candidate) <= max_chars:
+            current = candidate
+            continue
+        lines.append(current)
+        current = word
+        if len(lines) == max_lines - 1:
+            break
+
+    remaining_words = words[len(" ".join(lines + [current]).split()) :]
+    if remaining_words:
+        tail = " ".join([current, *remaining_words]).strip()
+    else:
+        tail = current
+
+    if len(lines) < max_lines:
+        lines.append(tail)
+
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
+
+    if len(lines) == max_lines and len(lines[-1]) > max_chars:
+        clipped = lines[-1][: max_chars - 3].rsplit(" ", 1)[0].strip() or lines[-1][: max_chars - 3]
+        lines[-1] = f"{clipped}..."
+
+    return lines[:max_lines]
+
+
+def _poster_path_for_share_card(share_html_path: Path) -> Path:
+    if "BEGINNER_SHARE_" in share_html_path.name:
+        poster_name = share_html_path.name.replace("BEGINNER_SHARE_", "BEGINNER_POSTER_").replace(".html", ".svg")
+        return share_html_path.with_name(poster_name)
+    return share_html_path.with_suffix(".svg")
+
+
+def _build_beginner_poster_svg(
+    *,
+    topic: str,
+    preset_title: str,
+    session_label: str,
+    caption: str,
+    pull_quote: str,
+    demo_mode: bool,
+) -> str:
+    accent = "#f97316" if demo_mode else "#14b8a6"
+    accent_deep = "#9a3412" if demo_mode else "#115e59"
+    accent_soft = "#ffedd5" if demo_mode else "#ccfbf1"
+    topic_lines = _wrap_display_lines(topic, max_chars=18, max_lines=3)
+    quote_lines = _wrap_display_lines(pull_quote, max_chars=20, max_lines=5)
+    caption_lines = _wrap_display_lines(caption, max_chars=44, max_lines=3)
+    session_text = "INSTANT DEMO" if demo_mode else "BEGINNER SESSION"
+
+    topic_svg = "".join(
+        f'<tspan x="640" y="{178 + (idx * 78)}">{html_escape(line)}</tspan>'
+        for idx, line in enumerate(topic_lines or ["R.A.I.N. Lab"])
+    )
+    quote_svg = "".join(
+        f'<tspan x="86" y="{218 + (idx * 52)}">{html_escape(line)}</tspan>'
+        for idx, line in enumerate(quote_lines or ["A shareable", "result page."])
+    )
+    caption_svg = "".join(
+        f'<tspan x="640" y="{470 + (idx * 30)}">{html_escape(line)}</tspan>'
+        for idx, line in enumerate(caption_lines or ["Local-first AI research sessions."])
+    )
+    safe_topic = html_escape(topic)
+    safe_preset_title = html_escape(preset_title)
+    safe_session_label = html_escape(session_label)
+    session_banner = f"R.A.I.N. LAB / {session_text}"
+
+    return f"""<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="1200"
+  height="630"
+  viewBox="0 0 1200 630"
+  role="img"
+  aria-label="{safe_topic} poster"
+>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="{accent}"/>
+      <stop offset="100%" stop-color="{accent_deep}"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="25%" cy="22%" r="75%">
+      <stop offset="0%" stop-color="rgba(255,255,255,0.34)"/>
+      <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" rx="34" fill="#f8f2e9"/>
+  <rect x="22" y="22" width="1156" height="586" rx="28" fill="url(#bg)"/>
+  <rect x="44" y="44" width="1112" height="542" rx="24" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.18)"/>
+  <circle cx="188" cy="114" r="148" fill="url(#glow)"/>
+  <circle cx="1064" cy="542" r="186" fill="rgba(255,255,255,0.08)"/>
+  <rect x="62" y="62" width="500" height="506" rx="26" fill="rgba(10,20,18,0.22)" stroke="rgba(255,255,255,0.14)"/>
+  <text
+    x="86"
+    y="112"
+    fill="{accent_soft}"
+    font-family="Avenir Next, Trebuchet MS, sans-serif"
+    font-size="22"
+    font-weight="700"
+    letter-spacing="4"
+  >{session_banner}</text>
+  <text fill="white" font-family="Georgia, Times New Roman, serif" font-size="42" font-weight="700">{quote_svg}</text>
+  <text
+    x="86"
+    y="512"
+    fill="rgba(255,255,255,0.82)"
+    font-family="Avenir Next, Trebuchet MS, sans-serif"
+    font-size="18"
+    letter-spacing="2"
+  >{safe_preset_title}</text>
+  <text
+    x="86"
+    y="542"
+    fill="rgba(255,255,255,0.92)"
+    font-family="Avenir Next, Trebuchet MS, sans-serif"
+    font-size="24"
+    font-weight="700"
+  >{safe_session_label}</text>
+  <text fill="white" font-family="Georgia, Times New Roman, serif" font-size="68" font-weight="700">{topic_svg}</text>
+  <text
+    fill="rgba(255,255,255,0.92)"
+    font-family="Avenir Next, Trebuchet MS, sans-serif"
+    font-size="24"
+  >{caption_svg}</text>
+  <text
+    x="640"
+    y="558"
+    fill="rgba(255,255,255,0.7)"
+    font-family="Avenir Next, Trebuchet MS, sans-serif"
+    font-size="18"
+    letter-spacing="2"
+  >Generated locally for quick sharing and remixing</text>
+</svg>
+"""
+
+
+def _should_open_local_page(args: argparse.Namespace) -> bool:
+    preference = getattr(args, "open_browser", "auto")
+    if preference == "off":
+        return False
+    if preference == "on":
+        return True
+    if os.environ.get("CI") or os.environ.get("PYTEST_CURRENT_TEST"):
+        return False
+    stdin_tty = bool(getattr(sys.stdin, "isatty", lambda: False)())
+    stdout_tty = bool(getattr(sys.stdout, "isatty", lambda: False)())
+    return stdin_tty and stdout_tty
+
+
+def _maybe_open_local_page(
+    args: argparse.Namespace,
+    page_path: Path,
+    *,
+    label: str,
+    log_path: Path | None = None,
+) -> bool:
+    if not _should_open_local_page(args):
+        return False
+
+    try:
+        opened = bool(webbrowser.open(page_path.resolve().as_uri()))
+    except Exception as exc:
+        _append_launcher_event(log_path, "local_page_open_failed", label=label, path=str(page_path), error=str(exc))
+        return False
+
+    if opened:
+        print(f"{ANSI_DIM}Opened {label} in your browser.{ANSI_RESET}")
+        _append_launcher_event(log_path, "local_page_opened", label=label, path=str(page_path))
+    return opened
+
+
 def _build_follow_up_moves(topic: str | None, current_preset: str | None) -> list[FollowUpMove]:
     subject = topic or "your idea"
     moves: list[FollowUpMove] = []
@@ -340,6 +522,13 @@ def _read_share_card_metadata(share_html_path: Path) -> tuple[str, str, str]:
     return topic, preset, session_style
 
 
+def _poster_uri_for_share_card(share_html_path: Path) -> str | None:
+    poster_path = _poster_path_for_share_card(share_html_path)
+    if poster_path.exists():
+        return poster_path.resolve().as_uri()
+    return None
+
+
 def _collect_recent_share_cards(share_dir: Path, limit: int = 6) -> list[Path]:
     return sorted(share_dir.glob("BEGINNER_SHARE_*.html"), reverse=True)[:limit]
 
@@ -355,12 +544,20 @@ def _build_showcase_html(
     safe_title = html_escape(title)
     safe_hero_topic = html_escape(hero_topic)
     latest_href = latest_share_card.resolve().as_uri() if latest_share_card is not None else ""
+    latest_poster_uri = _poster_uri_for_share_card(latest_share_card) if latest_share_card is not None else None
     latest_label = "Open latest share card" if latest_share_card is not None else "Run your first instant demo"
     latest_copy = (
         "The newest session is ready to revisit, screenshot, or send."
         if latest_share_card is not None
         else "No session yet. Run the instant demo and this page will turn into your local gallery."
     )
+    hero_preview_markup = ""
+    hero_poster_link_markup = ""
+    if latest_poster_uri:
+        hero_preview_markup = (
+            f'<img class="hero-preview" src="{latest_poster_uri}" alt="Latest poster preview">'
+        )
+        hero_poster_link_markup = f'<a href="{latest_poster_uri}">Open poster</a>'
     move_cards = []
     for idx, move in enumerate(follow_up_moves, start=1):
         move_cards.append(
@@ -396,9 +593,17 @@ def _build_showcase_html(
     recent_items = []
     for share_path in recent_share_cards:
         topic, preset_title, session_style = _read_share_card_metadata(share_path)
+        poster_uri = _poster_uri_for_share_card(share_path)
+        poster_markup = ""
+        if poster_uri is not None:
+            poster_markup = (
+                f'<img class="poster-thumb" src="{poster_uri}" '
+                f'alt="{html_escape(topic)} poster preview">'
+            )
         recent_items.append(
             f"""
         <a class="recent-card" href="{share_path.resolve().as_uri()}">
+          {poster_markup}
           <div class="card-label">{html_escape(preset_title)}</div>
           <strong>{html_escape(topic)}</strong>
           <span>{html_escape(session_style)}</span>
@@ -513,6 +718,7 @@ def _build_showcase_html(
       align-content: end;
       min-height: 300px;
       position: relative;
+      gap: 14px;
     }}
     .hero-card::before {{
       content: "";
@@ -536,6 +742,19 @@ def _build_showcase_html(
       color: white;
       text-decoration: none;
       font-weight: 700;
+    }}
+    .hero-preview {{
+      width: 100%;
+      border-radius: 20px;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(255,255,255,0.12);
+      min-height: 188px;
+      object-fit: cover;
+    }}
+    .hero-links {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
     }}
     .panel {{
       padding: 24px;
@@ -582,6 +801,14 @@ def _build_showcase_html(
       color: inherit;
       display: grid;
       gap: 8px;
+    }}
+    .poster-thumb {{
+      width: 100%;
+      aspect-ratio: 1.78 / 1;
+      object-fit: cover;
+      border-radius: 18px;
+      border: 1px solid rgba(31,41,55,0.08);
+      background: linear-gradient(145deg, rgba(20,184,166,0.12), rgba(249,115,22,0.1));
     }}
     .recent-card strong {{
       font-size: 21px;
@@ -656,9 +883,13 @@ def _build_showcase_html(
       </div>
       <aside class="hero-card">
         <div class="card-label">Latest surface</div>
+        {hero_preview_markup}
         <strong>{html_escape(latest_label)}</strong>
         <p>{html_escape(latest_copy)}</p>
-        <a href="{latest_href or '#'}">{html_escape(latest_label)}</a>
+        <div class="hero-links">
+          <a href="{latest_href or '#'}">{html_escape(latest_label)}</a>
+          {hero_poster_link_markup}
+        </div>
       </aside>
     </section>
     <section class="panel">
@@ -685,8 +916,8 @@ def _build_showcase_html(
     <section class="panel">
       <div class="section-head">
         <div>
-          <h2>Recent Experiments</h2>
-          <p>Your latest beginner and demo sessions stay here as a small local gallery.</p>
+          <h2>Poster Wall</h2>
+          <p>Your latest beginner and demo sessions stay here as a local poster wall.</p>
         </div>
       </div>
       <div class="recent-grid">{recent_cards_html}</div>
@@ -1055,6 +1286,7 @@ def _build_beginner_share_html_v2(
     rerun_command: str,
     follow_up_moves: list[FollowUpMove],
     showcase_path: Path | None,
+    poster_path: Path | None,
 ) -> str:
     accent = "#f97316" if demo_mode else "#14b8a6"
     accent_soft = "#fed7aa" if demo_mode else "#99f6e4"
@@ -1072,6 +1304,7 @@ def _build_beginner_share_html_v2(
     safe_preset_title = html_escape(preset_title)
     safe_rerun_command = html_escape(rerun_command)
     showcase_uri = showcase_path.resolve().as_uri() if showcase_path is not None else ""
+    poster_uri = poster_path.resolve().as_uri() if poster_path is not None else ""
     follow_up_cards: list[str] = []
     for idx, move in enumerate(follow_up_moves, start=1):
         follow_up_cards.append(
@@ -1409,6 +1642,15 @@ def _build_beginner_share_html_v2(
       font-size: 13px;
       line-height: 1.55;
     }}
+    .poster-preview {{
+      width: 100%;
+      border-radius: 22px;
+      border: 1px solid rgba(31,41,55,0.08);
+      background: linear-gradient(145deg, rgba(20,184,166,0.12), rgba(249,115,22,0.1));
+      aspect-ratio: 1.78 / 1;
+      object-fit: cover;
+      margin-top: 14px;
+    }}
     .next-grid {{
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1508,8 +1750,11 @@ def _build_beginner_share_html_v2(
       <article class="card card-side fade-up delay-1">
         <div class="label">Spotlight Quote</div>
         <div class="quote-block">
-          <p class="quote-text">{pull_quote}</p>
+          <p class="quote-text" id="spotlight-quote">{pull_quote}</p>
           <div class="quote-meta">{safe_preset_title} / {safe_session_label}</div>
+        </div>
+        <div class="controls" style="margin-top:14px;">
+          <button id="copy-quote" type="button">Copy Quote</button>
         </div>
       </article>
       <article class="card card-side fade-up delay-2">
@@ -1538,6 +1783,7 @@ def _build_beginner_share_html_v2(
         <code id="rerun-command">{safe_rerun_command}</code>
         <div class="controls" style="margin-top:14px;">
           <button id="copy-rerun" type="button">Copy Command</button>
+          <a class="link secondary" href="{poster_uri}">Open Poster SVG</a>
         </div>
       </article>
       <article class="card card-wide fade-up delay-3">
@@ -1554,6 +1800,7 @@ def _build_beginner_share_html_v2(
       <article class="card card-wide fade-up delay-3">
         <div class="label">Session Highlight</div>
         <div class="excerpt">{safe_excerpt or 'Run the session again to capture a fresh highlight.'}</div>
+        {f'<img class="poster-preview" src="{poster_uri}" alt="Poster preview for {safe_topic}">' if poster_uri else ""}
       </article>
     </section>
   </main>
@@ -1576,6 +1823,7 @@ def _build_beginner_share_html_v2(
       }});
     }};
     wireCopy("copy-caption", "caption", "Caption copied");
+    wireCopy("copy-quote", "spotlight-quote", "Quote copied");
     wireCopy("copy-rerun", "rerun-command", "Command copied");
     document.querySelectorAll("[data-copy-target]").forEach((button) => {{
       const targetId = button.getAttribute("data-copy-target");
@@ -1619,6 +1867,7 @@ def _write_beginner_share_card(
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     share_markdown_path = share_dir / f"BEGINNER_SHARE_{timestamp}.md"
     share_html_path = share_dir / f"BEGINNER_SHARE_{timestamp}.html"
+    poster_path = _poster_path_for_share_card(share_html_path)
     session_log = session_log_path or (library_root / "RAIN_LAB_MEETING_LOG.md")
     excerpt = _read_share_excerpt(session_log)
     topic = getattr(args, "display_topic", args.topic or "Open exploration")
@@ -1642,6 +1891,9 @@ def _write_beginner_share_card(
     )
     if preset is not None:
         caption += f" It used the {preset.title.lower()} preset."
+    pull_quote = _share_pull_quote(excerpt) or (
+        "No model setup required." if demo_mode else "Saved as a shareable local artifact."
+    )
 
     lines = [
         "# Beginner Session Share Card",
@@ -1675,6 +1927,7 @@ def _write_beginner_share_card(
             f"- Session log: {session_log}",
             f"- Launcher events: {launcher_log}",
             f"- HTML card: {share_html_path}",
+            f"- Poster SVG: {poster_path}",
             "",
             "## Quick Re-run",
             "",
@@ -1700,6 +1953,17 @@ def _write_beginner_share_card(
     )
 
     share_markdown_path.write_text("\n".join(lines), encoding="utf-8")
+    poster_path.write_text(
+        _build_beginner_poster_svg(
+            topic=topic,
+            preset_title=preset_title,
+            session_label=session_label,
+            caption=caption,
+            pull_quote=pull_quote,
+            demo_mode=demo_mode,
+        ),
+        encoding="utf-8",
+    )
     share_html_path.write_text(
         _build_beginner_share_html_v2(
             title=f"R.A.I.N. Lab Share Card · {topic}",
@@ -1714,6 +1978,7 @@ def _write_beginner_share_card(
             rerun_command=rerun_command,
             follow_up_moves=follow_up_moves,
             showcase_path=showcase_path,
+            poster_path=poster_path,
         ),
         encoding="utf-8",
     )
@@ -1839,6 +2104,7 @@ def _run_demo_session(
         print(f"{ANSI_GREEN}Share card ready: {share_card_path}{ANSI_RESET}")
         showcase_path = _write_beginner_showcase_page(args, repo_root, latest_share_card=share_card_path)
         print(f"{ANSI_GREEN}Local showcase ready: {showcase_path}{ANSI_RESET}")
+        _maybe_open_local_page(args, share_card_path, label="share card", log_path=log_path)
         _print_follow_up_moves(getattr(args, "display_topic", args.topic), getattr(args, "preset", None))
         _append_launcher_event(
             log_path,
@@ -1861,6 +2127,9 @@ def parse_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
     default_ui_mode = os.environ.get("RAIN_UI_MODE", "off").strip().lower()
     if default_ui_mode not in VALID_UI_MODES:
         default_ui_mode = "off"
+    default_browser_mode = os.environ.get("RAIN_OPEN_BROWSER", "auto").strip().lower()
+    if default_browser_mode not in VALID_BROWSER_MODES:
+        default_browser_mode = "auto"
     default_restart_sidecars = _env_bool("RAIN_RESTART_SIDECARS", True)
 
     parser = argparse.ArgumentParser(description="Unified launcher for rain_lab_meeting modes")
@@ -1956,6 +2225,15 @@ def parse_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
         help=(
             "Chat/Godot UI behavior: auto launches avatars when available,"
             " on requires UI stack, off (default) forces CLI-only."
+        ),
+    )
+    parser.add_argument(
+        "--open-browser",
+        choices=sorted(VALID_BROWSER_MODES),
+        default=default_browser_mode,
+        help=(
+            "Beginner/demo UX: auto opens the generated local page when interactive,"
+            " on always tries, off never opens the browser."
         ),
     )
     parser.add_argument(
@@ -2495,6 +2773,7 @@ def main(argv: list[str] | None = None) -> int:
             f"or pick a path below.{ANSI_RESET}"
         )
         print(f"{ANSI_DIM}Local showcase: {showcase_path}{ANSI_RESET}\n")
+        _maybe_open_local_page(args, showcase_path, label="showcase")
 
         print("What would you like to do first?")
         print(f"  {ANSI_GREEN}1{ANSI_RESET} - Instant demo (recommended first step)")
@@ -2738,6 +3017,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{ANSI_GREEN}Share card ready: {share_card_path}{ANSI_RESET}", flush=True)
             showcase_path = _write_beginner_showcase_page(args, repo_root, latest_share_card=share_card_path)
             print(f"{ANSI_GREEN}Local showcase ready: {showcase_path}{ANSI_RESET}", flush=True)
+            _maybe_open_local_page(args, share_card_path, label="share card", log_path=log_path)
             _print_follow_up_moves(getattr(args, "display_topic", args.topic), getattr(args, "preset", None))
             _append_launcher_event(
                 log_path,

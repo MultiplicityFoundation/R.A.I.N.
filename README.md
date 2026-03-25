@@ -29,7 +29,8 @@ Your data stays on your machine by default. The system runs locally, keeps conve
 ## Hello
 
 - The supported baseline is the Python launcher path (`python rain_lab.py`) plus the default Rust build.
-- `python rain_lab.py` is the product front door: press Enter for the no-setup instant demo, then use the local showcase page in `meeting_archives/RAIN_LAB_SHOWCASE.html` to revisit sessions and copy follow-up commands.
+- `python rain_lab.py` is the product front door: press Enter for the no-setup instant demo, then use the local showcase page in `meeting_archives/RAIN_LAB_SHOWCASE.html` to revisit sessions, open poster-style results, and copy follow-up commands.
+- Beginner and demo runs now emit both a screenshot-first HTML share card and a matching poster SVG in `meeting_archives/`, and interactive runs can open those pages automatically.
 - Provider, channel, platform, and storage integrations stay opt-in through explicit Cargo features.
 - Research and prototype surfaces stay documented, but they are not treated as release-blocking by default.
 - See [Stability Tiers](docs/project/stability-tiers.md) and [Production Readiness](docs/PRODUCTION_READINESS.md) before treating a new surface as part of the stable product.

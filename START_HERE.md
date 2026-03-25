@@ -15,6 +15,7 @@ python rain_lab.py
 ```
 
 For non-technical users, this is the **only entry point you need**. The script opens a guided wizard, pressing Enter starts the no-setup instant demo, and every beginner/demo run updates a local showcase page in `meeting_archives/RAIN_LAB_SHOWCASE.html`.
+Those runs also generate a screenshot-friendly HTML share card plus a matching poster SVG in `meeting_archives/`, and interactive runs can open them automatically. Use `--open-browser off` if you want to suppress that behavior.
 
 You can safely ignore files like `rain_unique.py`, `james_reader.py`, `chat_with_james.py`, and other specialized scripts unless a maintainer tells you to use them.
 
@@ -73,7 +74,7 @@ For a new non-technical user:
 2. Run `python rain_lab.py --mode first-run` once.
 3. Run `python rain_lab.py` and choose **Beginner mode**, or launch it directly with `python rain_lab.py --mode beginner --topic "your idea"`.
 4. If you want a fast wow moment before local model setup, just run `python rain_lab.py` and press Enter, or use `python rain_lab.py --mode demo --preset startup-debate`.
-5. After a session, open `meeting_archives/RAIN_LAB_SHOWCASE.html` to revisit recent runs and copy the next commands.
+5. After a session, open `meeting_archives/RAIN_LAB_SHOWCASE.html` to revisit recent runs, poster previews, and copy the next commands.
 6. If anything fails, run `python rain_lab.py --mode validate`.
 
 ---
@@ -85,7 +86,7 @@ For a new non-technical user:
 python rain_lab.py
 ```
 
-That's it. Just run that command, press Enter for the instant demo if you want the fastest path, and use the generated showcase page to keep going.
+That's it. Just run that command, press Enter for the instant demo if you want the fastest path, and use the generated showcase page and poster-style share outputs to keep going.
 
 ---
 
@@ -96,6 +97,7 @@ That's it. Just run that command, press Enter for the instant demo if you want t
 | **I'm not sure where to start** | `python rain_lab.py` (starts wizard) |
 | **Give it one idea and let it choose for me** | `python rain_lab.py --mode beginner --topic "your idea"` |
 | **Try a no-setup instant demo** | `python rain_lab.py --mode demo --preset startup-debate` |
+| **Keep everything local without opening pages** | `python rain_lab.py --open-browser off` |
 | Chat with AI about my research | `python rain_lab.py --mode chat --topic "your topic"` |
 | Check if my system is ready | `python rain_lab.py --mode validate` |
 | See what AI models are available | `python rain_lab.py --mode models` |

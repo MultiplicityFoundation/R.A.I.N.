@@ -27,6 +27,7 @@ def test_parse_defaults():
     assert args.mode == "chat"
     assert args.topic is None
     assert args.ui == "off"
+    assert args.open_browser == "auto"
     assert args.restart_sidecars is True
     assert args.max_sidecar_restarts == 2
     assert args.sidecar_restart_backoff == 0.5
@@ -394,10 +395,16 @@ def test_write_beginner_share_card_uses_session_log(repo_root, tmp_path):
     assert "Explain resonance simply" in contents
     assert "hello world from the session" in contents
     assert "Copy Caption" in contents
+    assert "Copy Quote" in contents
+    assert "Open Poster SVG" in contents
     assert "Spotlight Quote" in contents
     assert "screenshot-friendly" in contents
     assert "Try Next" in contents
     assert "Open Local Showcase" in contents
+    poster_path = share_path.parent / (
+        share_path.name.replace("BEGINNER_SHARE_", "BEGINNER_POSTER_").replace(".html", ".svg")
+    )
+    assert poster_path.exists()
     assert (share_path.parent / share_path.name.replace(".html", ".md")).exists()
 
 
@@ -428,9 +435,11 @@ def test_run_demo_session_writes_artifacts(repo_root, tmp_path):
     assert rc == 0
     artifacts = list((tmp_path / "meeting_archives").glob("DEMO_SESSION_*.md"))
     share_cards = list((tmp_path / "meeting_archives").glob("BEGINNER_SHARE_*.html"))
+    posters = list((tmp_path / "meeting_archives").glob("BEGINNER_POSTER_*.svg"))
     showcases = list((tmp_path / "meeting_archives").glob("RAIN_LAB_SHOWCASE.html"))
     assert artifacts
     assert share_cards
+    assert posters
     assert showcases
 
 
@@ -439,6 +448,7 @@ def test_write_beginner_showcase_page_includes_recent_sessions(repo_root, tmp_pa
     share_dir.mkdir(parents=True)
     recent_html = share_dir / "BEGINNER_SHARE_20260324_120000.html"
     recent_md = share_dir / "BEGINNER_SHARE_20260324_120000.md"
+    recent_svg = share_dir / "BEGINNER_POSTER_20260324_120000.svg"
     recent_html.write_text("<!DOCTYPE html>", encoding="utf-8")
     recent_md.write_text(
         "\n".join(
@@ -452,14 +462,16 @@ def test_write_beginner_showcase_page_includes_recent_sessions(repo_root, tmp_pa
         ),
         encoding="utf-8",
     )
+    recent_svg.write_text("<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>", encoding="utf-8")
     args, _ = parse_args(["--mode", "demo", "--library", str(tmp_path)])
     args = _prepare_demo_args(args)
 
     showcase_path = _write_beginner_showcase_page(args, repo_root, latest_share_card=recent_html)
 
     contents = showcase_path.read_text(encoding="utf-8")
-    assert "Recent Experiments" in contents
+    assert "Poster Wall" in contents
     assert "Explain resonance simply" in contents
+    assert "BEGINNER_POSTER_20260324_120000.svg" in contents
     assert "Run the debate" in contents or "Roast the idea" in contents
 
 
@@ -475,6 +487,7 @@ def test_main_without_args_defaults_to_demo(monkeypatch, repo_root):
     recorded: dict[str, str] = {}
 
     monkeypatch.setattr(rain_launcher, "_print_banner", lambda: None)
+    monkeypatch.setattr(rain_launcher, "_maybe_open_local_page", lambda *_args, **_kwargs: False)
     monkeypatch.setattr(
         rain_launcher,
         "_write_beginner_showcase_page",
