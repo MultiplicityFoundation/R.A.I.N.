@@ -1,6 +1,6 @@
 # macOS Update and Uninstall Guide
 
-This page documents supported update and uninstall procedures for R.A.I.N. on macOS (OS X).
+This page documents supported update and uninstall procedures for R.A.I.N. Lab on macOS.
 
 Last verified: **February 22, 2026**.
 
@@ -20,37 +20,21 @@ If both exist, your shell `PATH` order decides which one runs.
 
 ## 2) Update on macOS
 
-### A) Homebrew install
-
-```bash
-brew update
-brew upgrade R.A.I.N.
-R.A.I.N. --version
-```
-
-### B) Clone + bootstrap install
+### A) Repository checkout install
 
 From your local repository checkout:
 
 ```bash
 git pull --ff-only
-./install.sh --prefer-prebuilt
-R.A.I.N. --version
+./install.sh --no-greet
+python rain_lab.py --mode validate
 ```
 
-If you want source-only update:
+### B) Runtime-only CLI refresh
 
 ```bash
 git pull --ff-only
 cargo install --path . --force --locked
-R.A.I.N. --version
-```
-
-### C) Manual prebuilt binary install
-
-Re-run your download/install flow with the latest release asset, then verify:
-
-```bash
 R.A.I.N. --version
 ```
 
@@ -71,13 +55,14 @@ Service artifacts removed by `service uninstall`:
 
 ### B) Remove the binary by install method
 
-Homebrew:
+Repository checkout / fetch-first install:
 
 ```bash
-brew uninstall R.A.I.N.
+rm -rf .venv
+rm -rf bin
 ```
 
-Cargo/bootstrap/manual (`~/.cargo/bin/R.A.I.N.`):
+Runtime CLI binary (`~/.cargo/bin/R.A.I.N.`):
 
 ```bash
 cargo uninstall R.A.I.N. || true

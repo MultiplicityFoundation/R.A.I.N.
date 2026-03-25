@@ -26,9 +26,9 @@ For first-time installation, start from [one-click-bootstrap.md](../setup-guides
 
 ## Docker / Podman Runtime
 
-If you installed via `./install.sh --docker`, the container exits after onboarding. To run
-R.A.I.N. as a long-lived container, use the repository `docker-compose.yml` or start a
-container manually against the persisted data directory.
+The local one-click installer is meant for workstation setup. For long-lived container
+deployments, use the repository `docker-compose.yml` or start a container manually
+against the persisted data directory.
 
 ### Recommended: docker-compose
 
@@ -74,10 +74,11 @@ docker exec R.A.I.N. R.A.I.N. status
 
 For Podman, add `--userns keep-id --user "$(id -u):$(id -g)"` and append `:Z` to volume mounts.
 
-### Key detail: do not re-run install.sh to restart
+### Key detail: do not re-run the installer to restart
 
-Re-running `install.sh --docker` rebuilds the image and re-runs onboarding. To simply
-restart, use `docker start`, `docker compose up -d`, or `podman start`.
+Re-running the workstation installer or a bootstrap flow is not the right way to restart
+an existing container. To simply restart, use `docker start`, `docker compose up -d`, or
+`podman start`.
 
 For full setup instructions, see [one-click-bootstrap.md](../setup-guides/one-click-bootstrap.md#stopping-and-restarting-a-dockerpodman-container).
 

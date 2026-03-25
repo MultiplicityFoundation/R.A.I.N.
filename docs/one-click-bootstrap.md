@@ -23,18 +23,13 @@ That path:
 
 ### macOS / Linux
 
-Use the fetch-first source checkout flow:
+Use the one-click repo installer:
 
 ```bash
-uv python install 3.12
-uv venv .venv --python 3.12
-uv pip compile requirements-pinned.txt -o uv.lock
-uv pip sync --python .venv/bin/python uv.lock
-uv run --python .venv/bin/python bootstrap_local.py
-uv run --python .venv/bin/python rain_lab.py
+./install.sh
 ```
 
-`bootstrap_local.py` fetches the latest compatible prebuilt Rust engine, copies `config.toml` from `config.example.toml` when needed, prompts for an API key when `.env` is missing, and runs preflight checks unless you skip them.
+Under the hood, `install.sh` installs `uv` if needed, creates `.venv`, compiles and syncs the pinned requirements, runs `bootstrap_local.py`, and then hands off to James unless you pass `--no-greet`.
 
 ## After Install
 

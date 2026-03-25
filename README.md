@@ -42,18 +42,15 @@ cd james_library
 
 The installer uses `uv`, fetches the prebuilt runtime, prepares `.env` and `config.toml`, and hands off to James automatically.
 
-### macOS / Linux Source Checkout
+### macOS / Linux One-Click
 
 ```bash
 git clone https://github.com/topherchris420/james_library.git
 cd james_library
-uv python install 3.12
-uv venv .venv --python 3.12
-uv pip compile requirements-pinned.txt -o uv.lock
-uv pip sync --python .venv/bin/python uv.lock
-uv run --python .venv/bin/python bootstrap_local.py
-uv run --python .venv/bin/python rain_lab.py
+./install.sh
 ```
+
+The installer uses `uv`, fetches the prebuilt runtime, prepares `.env` and `config.toml`, and hands off to James automatically.
 
 Then:
 
@@ -69,6 +66,7 @@ Beginner and demo runs generate:
 
 Use `python rain_lab.py --open-browser off` if you want to keep everything local without auto-opening pages.
 On Windows, `INSTALL_RAIN.cmd` also creates desktop and Start Menu shortcuts.
+On macOS/Linux, `./install.sh` is the equivalent one-click repo installer.
 
 ## Why People Use It
 

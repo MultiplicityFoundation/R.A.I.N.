@@ -19,10 +19,10 @@ If you need a custom base URL, see [`../contributing/custom-providers.md`](../co
 ### Quick Start
 
 ```bash
-R.A.I.N. onboard \
-  --provider "zai" \
-  --api-key "YOUR_ZAI_API_KEY"
+python rain_lab.py --mode first-run
 ```
+
+Choose a hosted provider flow, then set the provider to `zai` and paste your API key when prompted.
 
 ### Manual Configuration
 
@@ -73,14 +73,14 @@ Expected response:
 }
 ```
 
-### Test with R.A.I.N. CLI
+### Test with R.A.I.N. Lab
 
 ```bash
-# Test agent directly
-echo "Hello" | R.A.I.N. agent
+# Check setup
+python rain_lab.py --mode validate
 
-# Check status
-R.A.I.N. status
+# Run a quick chat
+python rain_lab.py --mode chat --topic "Say hello and confirm the Z.AI provider is working"
 ```
 
 ## Environment Variables

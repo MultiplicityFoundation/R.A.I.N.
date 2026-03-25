@@ -35,17 +35,12 @@ cd james_library
 .\INSTALL_RAIN.cmd
 ```
 
-macOS/Linux source checkout:
+macOS/Linux one-click:
 
 ```bash
 git clone https://github.com/topherchris420/james_library.git
 cd james_library
-uv python install 3.12
-uv venv .venv --python 3.12
-uv pip compile requirements-pinned.txt -o uv.lock
-uv pip sync --python .venv/bin/python uv.lock
-uv run --python .venv/bin/python bootstrap_local.py
-uv run --python .venv/bin/python rain_lab.py
+./install.sh
 ```
 
 After install, the main product entrypoint is `python rain_lab.py`.

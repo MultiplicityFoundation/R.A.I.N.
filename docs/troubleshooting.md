@@ -1,4 +1,4 @@
-# R.A.I.N. Troubleshooting
+# R.A.I.N. Lab Troubleshooting
 
 This lowercase path is the canonical runtime-contract entry for troubleshooting.
 
@@ -6,139 +6,49 @@ Last verified: **February 20, 2026**.
 
 ## Installation / Bootstrap
 
-### `cargo` not found
+### `curl` or `uv` setup fails
 
 Symptom:
 
-- bootstrap exits with `cargo is not installed`
+- `install.sh` cannot download or locate `uv`
 
 Fix:
 
 ```bash
-./install.sh --install-rust
+curl --version
+./install.sh
 ```
 
-Or install from <https://rustup.rs/>.
+If `curl` is missing, install it with your platform package manager first.
+If you already have `uv`, make sure it is in `PATH` or at `~/.local/bin/uv`.
 
-### Missing system build dependencies
+### Reset the local Python environment
 
 Symptom:
 
-- build fails due to compiler or `pkg-config` issues
+- `.venv` is broken or dependencies look out of sync
 
 Fix:
 
 ```bash
-./install.sh --install-system-deps
+./install.sh --recreate-venv
 ```
 
-### Build fails on low-RAM / low-disk hosts
+### Prebuilt runtime fetch fails
 
 Symptoms:
 
-- `cargo build --release` is killed (`signal: 9`, OOM killer, or `cannot allocate memory`)
-- Build crashes after adding swap because disk space runs out
+- `bootstrap_local.py` fails while calling the GitHub Releases API
+- installer completes Python setup but cannot fetch the Rust runtime
 
-Why this happens:
-
-- Runtime memory (<5MB for common operations) is not the same as compile-time memory.
-- Full source build can require **2 GB RAM + swap** and **6+ GB free disk**.
-- Enabling swap on a tiny disk can avoid RAM OOM but still fail due to disk exhaustion.
-
-Preferred path for constrained machines:
+Fixes:
 
 ```bash
-./install.sh --prefer-prebuilt
+python bootstrap_local.py --release-tag latest
+python rain_lab.py --mode validate
 ```
 
-Binary-only mode (no source fallback):
-
-```bash
-./install.sh --prebuilt-only
-```
-
-If you must compile from source on constrained hosts:
-
-1. Add swap only if you also have enough free disk for both swap + build output.
-1. Limit cargo parallelism:
-
-```bash
-CARGO_BUILD_JOBS=1 cargo build --release --locked
-```
-
-1. Reduce heavy features when Matrix is not required:
-
-```bash
-cargo build --release --locked --features hardware
-```
-
-1. Cross-compile on a stronger machine and copy the binary to the target host.
-
-### Build is very slow or appears stuck
-
-Symptoms:
-
-- `cargo check` / `cargo build` appears stuck at `Checking R.A.I.N.` for a long time
-- repeated `Blocking waiting for file lock on package cache` or `build directory`
-
-Why this happens in R.A.I.N.:
-
-- Matrix E2EE stack (`matrix-sdk`, `ruma`, `vodozemac`) is large and expensive to type-check.
-- TLS + crypto native build scripts (`aws-lc-sys`, `ring`) add noticeable compile time.
-- `rusqlite` with bundled SQLite compiles C code locally.
-- Running multiple cargo jobs/worktrees in parallel causes lock contention.
-
-Fast checks:
-
-```bash
-cargo check --timings
-cargo tree -d
-```
-
-The timing report is written to `target/cargo-timings/cargo-timing.html`.
-
-Faster local iteration (when Matrix channel is not needed):
-
-```bash
-cargo check
-```
-
-This uses the lean default feature set and can significantly reduce compile time.
-
-To build with Matrix support explicitly enabled:
-
-```bash
-cargo check --features channel-matrix
-```
-
-To build with Matrix + Lark + hardware support:
-
-```bash
-cargo check --features hardware,channel-matrix,channel-lark
-```
-
-Lock-contention mitigation:
-
-```bash
-pgrep -af "cargo (check|build|test)|cargo check|cargo build|cargo test"
-```
-
-Stop unrelated cargo jobs before running your own build.
-
-### `R.A.I.N.` command not found after install
-
-Symptom:
-
-- install succeeds but shell cannot find `R.A.I.N.`
-
-Fix:
-
-```bash
-export PATH="$HOME/.cargo/bin:$PATH"
-which R.A.I.N.
-```
-
-Persist in your shell profile if needed.
+If the network is restricted, retry later or download the matching release asset manually into `bin/`.
 
 ## Runtime / Gateway
 
@@ -218,12 +128,7 @@ journalctl --user -u R.A.I.N..service -f
 ## Installer URL
 
 ```bash
-curl -fsSL https://rainlabs.sh/install.sh | sh
+./install.sh
 ```
 
-If piping is blocked by policy, download the installer first:
-
-```bash
-curl -fsSLo install.sh https://rainlabs.sh/install.sh
-sh install.sh
-```
+For Windows, use `.\INSTALL_RAIN.cmd`.

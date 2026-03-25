@@ -49,7 +49,7 @@ Safety behavior:
 2. Unzip the snapshot there.
 3. Recreate the environment with the current install route:
    - Windows: run `.\INSTALL_RAIN.cmd`
-   - macOS/Linux: recreate `.venv` with `uv`, sync dependencies, then run `bootstrap_local.py`
+   - macOS/Linux: run `./install.sh`
 4. Validate:
    - `python rain_lab.py --mode validate`
 5. Resume usage:

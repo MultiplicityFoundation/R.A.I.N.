@@ -1,6 +1,6 @@
-# R.A.I.N. Repository Map
+# R.A.I.N. Lab Repository Map
 
-R.A.I.N. is a Rust-first autonomous agent runtime. It receives messages from messaging platforms, routes them through an LLM, executes tool calls, persists memory, and returns responses. It can also control hardware peripherals and run as a long-lived daemon.
+R.A.I.N. Lab is the product surface for this repository. Under it, the Rust runtime receives messages from messaging platforms, routes them through an LLM, executes tool calls, persists memory, and returns responses. The Python side provides launcher and research workflow layers on top.
 
 ## Runtime Flow
 
@@ -38,7 +38,7 @@ User message (Telegram/Discord/Slack/...)
 ## Top-Level Layout
 
 ```
-R.A.I.N./
+james_library/
 ├── src/                  # Rust source (the runtime)
 ├── crates/robot-kit/     # Separate crate for hardware robot kit
 ├── tests/                # Integration/E2E tests
@@ -56,7 +56,7 @@ R.A.I.N./
 ├── Dockerfile            # Container build
 ├── docker-compose.yml    # Service composition
 ├── flake.nix             # Nix dev environment
-└── install.sh            # One-command setup script
+└── install.sh            # POSIX fetch-first installer for macOS/Linux
 ```
 
 ---

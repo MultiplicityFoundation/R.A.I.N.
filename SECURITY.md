@@ -4,7 +4,7 @@
 
 If you discover a security vulnerability in R.A.I.N. Lab, report it by opening an issue on this repository:
 
-**https://github.com/MultiplicityFoundation/R.A.I.N./issues**
+**https://github.com/topherchris420/james_library/issues**
 
 ### What to include
 
@@ -13,7 +13,7 @@ Include the following information in your report:
 1. **Description**: A clear description of the vulnerability
 2. **Impact**: The potential security impact (data exposure, privilege escalation, etc.)
 3. **Reproduction Steps**: Detailed steps to reproduce the issue
-4. **Affected Components**: Which parts of Phase Mirror are affected (mirror-dissonance, Terraform configs, API endpoints, etc.)
+4. **Affected Components**: Which parts of R.A.I.N. Lab are affected (launcher, runtime, gateway, channels, onboarding, etc.)
 5. **Suggested Fix**: If you have one (optional but appreciated)
 
 ### Severity Classifications
@@ -38,7 +38,7 @@ When opening a security issue, add the label `security` if available. If not, pr
 
 ## Scope
 
-This policy covers all code in the `MultiplicityFoundation/R.A.I.N.` repository, including:
+This policy covers all code in the `topherchris420/james_library` repository, including:
 
 - Python scripts (`rain_lab.py`, `rain_lab_meeting.py`, `rain_lab_meeting_chat_version.py`, `hello_os.py`)
 - Agent soul files (`*_SOUL.md`)

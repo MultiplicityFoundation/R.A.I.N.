@@ -17,7 +17,7 @@ python rain_lab.py
 For non-technical users, this is the **only daily entry point you need**. The script opens a guided wizard, pressing Enter starts the no-setup instant demo, and every beginner/demo run updates a local showcase page in `meeting_archives/RAIN_LAB_SHOWCASE.html`.
 Those runs also generate a screenshot-friendly HTML share card plus a matching poster SVG in `meeting_archives/`, and interactive runs can open them automatically. Use `--open-browser off` if you want to suppress that behavior.
 
-Windows users should start with `.\INSTALL_RAIN.cmd`. macOS/Linux users should use the fetch-first `uv` + `bootstrap_local.py` flow from the main `README.md`.
+Windows users should start with `.\INSTALL_RAIN.cmd`. macOS/Linux users should start with `./install.sh`.
 
 You can safely ignore files like `rain_unique.py`, `james_reader.py`, and other specialized scripts unless a maintainer tells you to use them. `chat_with_james.py` is used for the first installer handoff, but it is not the main product launcher.
 
@@ -54,7 +54,7 @@ If you're just using the tool, think of all of this as one app and start with `p
 Before first use, make sure you have one supported install route:
 
 1. **Windows**: run `.\INSTALL_RAIN.cmd`
-2. **macOS/Linux**: install `uv`, create the `.venv`, sync dependencies, then run `bootstrap_local.py`
+2. **macOS/Linux**: run `./install.sh`
 3. **Optional local models**: install Ollama or LM Studio if you want local inference instead of the instant demo or a hosted provider
 4. **Optional hosted models**: paste an API key into the bootstrap prompt so `.env` is created for you
 
@@ -70,7 +70,7 @@ python rain_lab.py --mode validate
 
 For a new non-technical user:
 
-1. Run `.\INSTALL_RAIN.cmd` on Windows, or finish the `uv` + `bootstrap_local.py` setup on macOS/Linux.
+1. Run `.\INSTALL_RAIN.cmd` on Windows, or `./install.sh` on macOS/Linux.
 2. If the installer hands you off to James, use that as the welcome screen, then return to `python rain_lab.py` for the main product workflow.
 3. Run `python rain_lab.py` and press Enter for the instant demo, or choose **Beginner mode**.
 4. If you want to wire up local or hosted models, run `python rain_lab.py --mode first-run`.

@@ -89,13 +89,15 @@ Configure branch protection for `main` in
 ## Getting Started
 
 ```bash
-# Clone the fork
-git clone https://github.com/MultiplicityFoundation/R.A.I.N..git
-cd R.A.I.N.
+# Clone the repo
+git clone https://github.com/topherchris420/james_library.git
+cd james_library
 
-# Install dependencies
-pip install -r requirements.txt
-pip install -r requirements-dev.txt
+# Create the dev environment
+uv python install 3.12
+uv venv .venv --python 3.12
+uv pip sync --python .venv/bin/python requirements-dev-pinned.txt
+uv run --python .venv/bin/python bootstrap_local.py --skip-preflight
 
 # Run the test suite
 pytest tests/ -v

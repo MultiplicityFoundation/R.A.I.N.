@@ -16,18 +16,13 @@ That path installs `uv`, creates `.venv`, syncs dependencies, fetches the prebui
 
 ### macOS / Linux
 
-Use the fetch-first checkout flow:
+Run the root installer:
 
 ```bash
-uv python install 3.12
-uv venv .venv --python 3.12
-uv pip compile requirements-pinned.txt -o uv.lock
-uv pip sync --python .venv/bin/python uv.lock
-uv run --python .venv/bin/python bootstrap_local.py
-uv run --python .venv/bin/python rain_lab.py
+./install.sh
 ```
 
-`bootstrap_local.py` fetches the correct prebuilt runtime for the current OS/architecture, initializes missing config files, prompts for an API key if `.env` is missing, and runs preflight checks by default.
+That installer installs `uv` if needed, creates `.venv`, syncs the pinned Python requirements, runs `bootstrap_local.py`, and then opens the James handoff unless you pass `--no-greet`.
 
 ## After Install
 
