@@ -2,8 +2,11 @@ from pathlib import Path
 
 import james_library.launcher.rain_lab as rain_launcher
 from james_library.launcher.rain_lab import (
+    _choose_beginner_mode,
+    _prepare_beginner_args,
     _build_sidecar_specs,
     _resolve_launcher_log_path,
+    _write_beginner_share_card,
     build_command,
     build_godot_bridge_command,
     build_godot_client_command,
@@ -28,6 +31,12 @@ def test_parse_rlm_mode():
     args, _ = parse_args(["--mode", "rlm", "--topic", "test"])
     assert args.mode == "rlm"
     assert args.topic == "test"
+
+
+def test_parse_beginner_mode():
+    args, _ = parse_args(["--mode", "beginner", "--topic", "make this simple"])
+    assert args.mode == "beginner"
+    assert args.topic == "make this simple"
 
 
 def test_parse_godot_mode_defaults():
@@ -286,3 +295,74 @@ def test_build_command_first_run(repo_root):
     assert "rain_first_run.py" in cmd[1]
     assert "--topic" in cmd
     assert "hello" in cmd
+
+
+def test_choose_beginner_mode_prefers_chat_for_normal_prompt():
+    assert _choose_beginner_mode("Explain resonance simply") == "chat"
+
+
+def test_choose_beginner_mode_prefers_rlm_for_debate_prompt():
+    assert _choose_beginner_mode("Debate two startup ideas vs each other") == "rlm"
+
+
+def test_prepare_beginner_args_enables_auto_ui_and_routes_chat():
+    args, _ = parse_args(["--mode", "beginner", "--topic", "Explain this clearly"])
+    prepared = _prepare_beginner_args(args)
+    assert prepared.mode == "chat"
+    assert prepared.ui == "auto"
+
+
+def test_prepare_beginner_args_keeps_explicit_ui():
+    args, _ = parse_args(["--mode", "beginner", "--topic", "Explain this clearly", "--ui", "off"])
+    prepared = _prepare_beginner_args(args, ui_was_explicit=True)
+    assert prepared.mode == "chat"
+    assert prepared.ui == "off"
+
+
+def test_prepare_beginner_args_routes_debate_with_turn_budget():
+    args, _ = parse_args(["--mode", "beginner", "--topic", "Compare solar vs wind for my town"])
+    prepared = _prepare_beginner_args(args)
+    assert prepared.mode == "rlm"
+    assert prepared.turns == 4
+
+
+def test_write_beginner_share_card_uses_session_log(repo_root, tmp_path):
+    args, _ = parse_args(
+        [
+            "--mode",
+            "beginner",
+            "--topic",
+            "Explain resonance simply",
+            "--library",
+            str(tmp_path),
+        ]
+    )
+    log_path = tmp_path / "RAIN_LAB_MEETING_LOG.md"
+    log_path.write_text("hello world from the session", encoding="utf-8")
+
+    share_path = _write_beginner_share_card(
+        args,
+        repo_root,
+        requested_mode="beginner",
+        launched_mode="chat",
+        exit_code=0,
+    )
+
+    assert share_path is not None
+    assert share_path.exists()
+    contents = share_path.read_text(encoding="utf-8")
+    assert "Beginner Session Share Card" in contents
+    assert "Explain resonance simply" in contents
+    assert "hello world from the session" in contents
+
+
+def test_write_beginner_share_card_skips_non_beginner(repo_root, tmp_path):
+    args, _ = parse_args(["--mode", "chat", "--topic", "x", "--library", str(tmp_path)])
+    share_path = _write_beginner_share_card(
+        args,
+        repo_root,
+        requested_mode="chat",
+        launched_mode="chat",
+        exit_code=0,
+    )
+    assert share_path is None

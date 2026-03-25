@@ -14,7 +14,7 @@ Use this command:
 python rain_lab.py
 ```
 
-For non-technical users, this is the **only entry point you need**. The script includes a guided wizard, first-run setup, validation checks, model listing, and chat/research modes.
+For non-technical users, this is the **only entry point you need**. The script includes a guided wizard, first-run setup, validation checks, model listing, and a beginner mode that chooses the simplest flow for you.
 
 You can safely ignore files like `rain_unique.py`, `james_reader.py`, `chat_with_james.py`, and other specialized scripts unless a maintainer tells you to use them.
 
@@ -71,7 +71,7 @@ For a new non-technical user:
 
 1. Install Python and Ollama.
 2. Run `python rain_lab.py --mode first-run` once.
-3. Run `python rain_lab.py` and choose **Chat** or **Guided mode**.
+3. Run `python rain_lab.py` and choose **Beginner mode**, or launch it directly with `python rain_lab.py --mode beginner --topic "your idea"`.
 4. If anything fails, run `python rain_lab.py --mode validate`.
 
 ---
@@ -92,6 +92,7 @@ That's it. Just run that command and follow the simple prompts.
 | When you want to... | Run this |
 |---------------------|----------|
 | **I'm not sure where to start** | `python rain_lab.py` (starts wizard) |
+| **Give it one idea and let it choose for me** | `python rain_lab.py --mode beginner --topic "your idea"` |
 | Chat with AI about my research | `python rain_lab.py --mode chat --topic "your topic"` |
 | Check if my system is ready | `python rain_lab.py --mode validate` |
 | See what AI models are available | `python rain_lab.py --mode models` |

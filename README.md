@@ -252,7 +252,7 @@ python3 bootstrap_local.py
 python3 rain_lab.py
 ```
 
-The interactive wizard will walk you through first-time setup and start a chat session.
+The interactive wizard will walk you through first-time setup and can launch beginner mode automatically.
 
 </details>
 
@@ -306,7 +306,7 @@ python3 bootstrap_local.py
 python3 rain_lab.py
 ```
 
-The interactive wizard will walk you through first-time setup and start a chat session.
+The interactive wizard will walk you through first-time setup and can launch beginner mode automatically.
 
 </details>
 
@@ -319,6 +319,7 @@ Once installed, here are the most common things you can do:
 | What you want to do | Command |
 |---|---|
 | **Start chatting** (recommended first step) | `python rain_lab.py` |
+| **Beginner mode with one topic** | `python rain_lab.py --mode beginner --topic "your idea"` |
 | **Guided first-time setup** | `python rain_lab.py --mode first-run` |
 | **Chat about a specific topic** | `python rain_lab.py --mode chat --topic "your research topic"` |
 | **Run a lab meeting** (multi-agent debate) | `python rain_lab.py --mode rlm` |
@@ -328,6 +329,8 @@ Once installed, here are the most common things you can do:
 | **Health check** | `python rain_lab.py --mode health` |
 
 > **Tip:** On macOS and Linux, use `python3` instead of `python` if `python` is not recognized.
+
+`--mode beginner` is the easiest direct entrypoint for nontechnical users. It asks for one topic, chooses a simple chat or debate flow automatically, prefers avatars when available, and writes a share card into `meeting_archives/` after the session.
 
 ---
 ## 🐙 How R.A.I.N. Lab Differs from Other AI Research Tools

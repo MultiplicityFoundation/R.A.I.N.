@@ -55,6 +55,18 @@ ASCII_ART_LINES = [
 ]
 
 VALID_UI_MODES = {"auto", "on", "off"}
+BEGINNER_DEBATE_HINTS = (
+    "debate",
+    "argue",
+    "compare",
+    "comparison",
+    "versus",
+    " vs ",
+    " pros and cons ",
+    "which is better",
+    "roundtable",
+    "panel",
+)
 
 
 def _console_safe(text: str) -> str:
@@ -154,6 +166,123 @@ def _split_passthrough_args(argv: list[str]) -> tuple[list[str], list[str]]:
     return argv, []
 
 
+def _choose_beginner_mode(topic: str | None) -> str:
+    if not topic:
+        return "chat"
+
+    normalized = f" {' '.join(topic.strip().lower().split())} "
+    for hint in BEGINNER_DEBATE_HINTS:
+        if hint in normalized:
+            return "rlm"
+    return "chat"
+
+
+def _prepare_beginner_args(
+    args: argparse.Namespace,
+    *,
+    ui_was_explicit: bool = False,
+) -> argparse.Namespace:
+    beginner_mode = _choose_beginner_mode(args.topic)
+    prepared = _copy_args_with_mode(args, beginner_mode)
+
+    if not ui_was_explicit and prepared.ui == "off":
+        prepared.ui = "auto"
+
+    if prepared.mode == "rlm" and prepared.turns is None:
+        prepared.turns = 4
+
+    return prepared
+
+
+def _resolve_library_root(args: argparse.Namespace, repo_root: Path) -> Path:
+    if args.library:
+        candidate = Path(args.library).expanduser()
+        if not candidate.is_absolute():
+            candidate = (Path.cwd() / candidate).resolve()
+        return candidate
+    return repo_root
+
+
+def _read_share_excerpt(path: Path, max_chars: int = 700) -> str:
+    try:
+        text = path.read_text(encoding="utf-8", errors="ignore").strip()
+    except Exception:
+        return ""
+
+    if not text:
+        return ""
+
+    excerpt = text[-max_chars:].strip()
+    if len(text) > max_chars:
+        excerpt = "..." + excerpt
+    return excerpt
+
+
+def _write_beginner_share_card(
+    args: argparse.Namespace,
+    repo_root: Path,
+    *,
+    requested_mode: str,
+    launched_mode: str,
+    exit_code: int,
+) -> Path | None:
+    if requested_mode != "beginner":
+        return None
+
+    library_root = _resolve_library_root(args, repo_root)
+    share_dir = library_root / "meeting_archives"
+    share_dir.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    share_path = share_dir / f"BEGINNER_SHARE_{timestamp}.md"
+    session_log = library_root / "RAIN_LAB_MEETING_LOG.md"
+    excerpt = _read_share_excerpt(session_log)
+    topic = args.topic or "Open exploration"
+    session_label = "debate" if launched_mode == "rlm" else "chat"
+
+    lines = [
+        "# Beginner Session Share Card",
+        "",
+        f"Topic: {topic}",
+        f"Mode chosen automatically: {session_label}",
+        f"UI preference used: {args.ui}",
+        f"Exit code: {exit_code}",
+        "",
+        "## Suggested Share Caption",
+        "",
+        f'I explored "{topic}" with R.A.I.N. Lab in beginner mode.',
+        f"It picked a {session_label} flow automatically and saved the session notes for me.",
+        "",
+    ]
+
+    if excerpt:
+        lines.extend(
+            [
+                "## Session Highlight",
+                "",
+                excerpt,
+                "",
+            ]
+        )
+
+    lines.extend(
+        [
+            "## Files",
+            "",
+            f"- Session log: {session_log}",
+            f"- Launcher events: {_resolve_launcher_log_path(args, repo_root) or '[disabled]'}",
+            "",
+            "## Quick Re-run",
+            "",
+            f'python rain_lab.py --mode beginner --topic "{topic}"',
+            "",
+        ]
+    )
+
+    share_path.write_text("\n".join(lines), encoding="utf-8")
+    return share_path
+
+
 def parse_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
     known, passthrough = _split_passthrough_args(argv)
     default_ui_mode = os.environ.get("RAIN_UI_MODE", "off").strip().lower()
@@ -165,6 +294,7 @@ def parse_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
     parser.add_argument(
         "--mode",
         choices=[
+            "beginner",
             "rlm",
             "chat",
             "godot",
@@ -182,11 +312,12 @@ def parse_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
         ],
         default="chat",
         help=(
-            "Which engine to run: wizard (guided help), start (same as wizard),"
-            " chat (talk to AI), validate (check system), models (list AI models),"
-            " status (show status), onboard (first-time setup), rlm (tool-exec),"
-            " godot (chat + visual), hello-os (executable), compile (build knowledge),"
-            " preflight (env checks), backup (snapshot), first-run (onboarding)"
+            "Which engine to run: beginner (easy mode), wizard (guided help),"
+            " start (same as wizard), chat (talk to AI), validate (check system),"
+            " models (list AI models), status (show status), onboard (first-time"
+            " setup), rlm (tool-exec), godot (chat + visual), hello-os"
+            " (executable), compile (build knowledge), preflight (env checks),"
+            " backup (snapshot), first-run (onboarding)"
         ),
     )
     parser.add_argument("--topic", type=str, default=None, help="Meeting topic")
@@ -752,6 +883,7 @@ def main(argv: list[str] | None = None) -> int:
         # Map friendly names to actual modes
         mode_map = {
             "start": "wizard",
+            "easy": "beginner",
             "onboard": "first-run",
             "validate": "preflight",
             "models": "preflight",  # Will show models after preflight
@@ -762,19 +894,23 @@ def main(argv: list[str] | None = None) -> int:
 
     args, passthrough = parse_args(argv)
     repo_root = Path(__file__).resolve().parents[2]
+    requested_mode = args.mode
+    ui_was_explicit = "--ui" in argv
+    banner_printed = False
 
     # Handle wizard mode - interactive guidance
     if args.mode == "wizard":
         _print_banner()
+        banner_printed = True
         print(f"\n{ANSI_CYAN}Welcome to R.A.I.N. Lab!{ANSI_RESET}")
         print(f"{ANSI_DIM}I'll help you get started.{ANSI_RESET}\n")
 
         print("What would you like to do?")
-        print(f"  {ANSI_GREEN}1{ANSI_RESET} - Chat with AI about my research")
+        print(f"  {ANSI_GREEN}1{ANSI_RESET} - Beginner mode (recommended)")
         print(f"  {ANSI_GREEN}2{ANSI_RESET} - Check if my system is ready")
         print(f"  {ANSI_GREEN}3{ANSI_RESET} - See what AI models are available")
         print(f"  {ANSI_GREEN}4{ANSI_RESET} - First-time setup")
-        print(f"  {ANSI_GREEN}5{ANSI_RESET} - Run a research meeting")
+        print(f"  {ANSI_GREEN}5{ANSI_RESET} - Run a research debate")
         print(f"  {ANSI_GREEN}6{ANSI_RESET} - Validate my environment")
 
         try:
@@ -784,8 +920,8 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         if choice == "1":
-            print(f"\n{ANSI_GREEN}Starting chat mode...{ANSI_RESET}")
-            args.mode = "chat"
+            print(f"\n{ANSI_GREEN}Starting beginner mode...{ANSI_RESET}")
+            args.mode = "beginner"
         elif choice == "2":
             print(f"\n{ANSI_GREEN}Running system check...{ANSI_RESET}")
             args.mode = "preflight"
@@ -810,10 +946,38 @@ def main(argv: list[str] | None = None) -> int:
             print(f"\n{ANSI_GREEN}Validating environment...{ANSI_RESET}")
             args.mode = "preflight"
         else:
-            print(f"\n{ANSI_YELLOW}Starting in chat mode (default)...{ANSI_RESET}")
-            args.mode = "chat"
+            print(f"\n{ANSI_YELLOW}Starting in beginner mode (default)...{ANSI_RESET}")
+            args.mode = "beginner"
 
-    _print_banner()
+        requested_mode = args.mode
+
+    if requested_mode == "beginner":
+        if not args.topic and "-h" not in passthrough and "--help" not in passthrough:
+            if not banner_printed:
+                _print_banner()
+                banner_printed = True
+            print(f"\n{ANSI_CYAN}Beginner mode keeps this simple.{ANSI_RESET}")
+            print(f"{ANSI_DIM}Tell James what you want to explore, explain, or debate.{ANSI_RESET}")
+            print(f"{ANSI_DIM}Examples: 'Explain resonance simply', 'Debate two startup ideas'{ANSI_RESET}")
+            try:
+                topic_input = input(f"{ANSI_GREEN}What should James help with? {ANSI_RESET}").strip()
+                if topic_input:
+                    args.topic = topic_input
+                else:
+                    args.topic = "Help me explore a new idea"
+            except KeyboardInterrupt:
+                print(f"\n{ANSI_RED}Aborted.{ANSI_RESET}")
+                return 1
+
+        args = _prepare_beginner_args(args, ui_was_explicit=ui_was_explicit)
+        chosen_label = "research debate" if args.mode == "rlm" else "guided chat"
+        print(f"{ANSI_GREEN}Beginner mode: choosing {chosen_label}.{ANSI_RESET}")
+        if args.ui == "auto":
+            print(f"{ANSI_DIM}If avatars are available, I will use them. Otherwise this stays in the CLI.{ANSI_RESET}")
+
+    if not banner_printed:
+        _print_banner()
+        banner_printed = True
 
     # Interactive prompt if topic is missing (and not asking for help)
     if (
@@ -846,7 +1010,7 @@ def main(argv: list[str] | None = None) -> int:
     _append_launcher_event(
         log_path,
         "launcher_started",
-        requested_mode=args.mode,
+        requested_mode=requested_mode,
         ui=args.ui,
         restart_sidecars=bool(args.restart_sidecars),
         max_sidecar_restarts=max(0, int(args.max_sidecar_restarts)),
@@ -935,6 +1099,21 @@ def main(argv: list[str] | None = None) -> int:
 
         return exit_code
     finally:
+        share_card_path = _write_beginner_share_card(
+            args,
+            repo_root,
+            requested_mode=requested_mode,
+            launched_mode=effective_args.mode,
+            exit_code=exit_code,
+        )
+        if share_card_path is not None:
+            print(f"{ANSI_GREEN}Share card ready: {share_card_path}{ANSI_RESET}", flush=True)
+            _append_launcher_event(
+                log_path,
+                "beginner_share_card_created",
+                path=str(share_card_path),
+                launched_mode=effective_args.mode,
+            )
         _terminate_process(main_proc)
         for sidecar in sidecars:
             _terminate_process(sidecar.process)
