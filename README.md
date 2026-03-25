@@ -20,7 +20,7 @@
   <a href="README.vi.md">Vietnamese</a>
 </p>
 
-R.A.I.N. Lab is a local-first AI research product for people who want more than a single chatbot answer.
+R.A.I.N. Lab is a local-first AI research lab for people who want more than a single chatbot answer.
 It helps you test ideas, compare viewpoints, run structured debates, and generate shareable results without
 sending your data off-machine by default.
 
@@ -54,8 +54,8 @@ Use `python rain_lab.py --open-browser off` if you want to keep everything local
 ## Why People Use It
 
 - Local-first by default: conversations, archives, and outputs stay on your machine unless you opt into a provider.
-- Beginner-friendly front door: `python rain_lab.py` opens the guided launcher and the instant demo works without a model.
-- Structured reasoning: R.A.I.N. Lab can debate, compare, and resolve disagreement instead of just generating plausible text.
+- Beginner-friendly front door: `python rain_lab.py` opens the guided launcher, and the instant demo works without a model.
+- Structured reasoning: R.A.I.N. Lab can debate, compare, and resolve disagreements instead of just generating plausible text.
 - Shareable outputs: beginner and demo sessions end in polished artifacts people can screenshot, revisit, and pass around.
 
 ## Pick A Path
@@ -134,7 +134,7 @@ Use the focused docs below depending on what you need:
 
 ## Product Layers
 
-R.A.I.N. Lab is one product built from two main layers:
+R.A.I.N. Lab is one platform built from two main layers:
 
 | Layer | Role | Language |
 | --- | --- | --- |
