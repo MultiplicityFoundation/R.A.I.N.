@@ -21,6 +21,9 @@ pub fn load_manifest(path: &Path) -> Result<AgentManifest> {
     validate_manifest(&manifest)?;
     normalize_tool_names(&mut manifest.tools.allow);
     normalize_tool_names(&mut manifest.tools.deny);
+    normalize_tool_names(&mut manifest.tools.core_tools);
+    normalize_tool_names(&mut manifest.tools.discoverable_tools);
+    validate_tool_scopes(&manifest)?;
 
     Ok(manifest)
 }
@@ -52,6 +55,24 @@ fn validate_manifest(manifest: &AgentManifest) -> Result<()> {
             }
         }
     }
+    Ok(())
+}
+
+fn validate_tool_scopes(manifest: &AgentManifest) -> Result<()> {
+    let allow_set: HashSet<&str> = manifest.tools.allow.iter().map(String::as_str).collect();
+
+    for name in &manifest.tools.core_tools {
+        if !allow_set.contains(name.as_str()) {
+            bail!("manifest.tools.core_tools must be a subset of manifest.tools.allow");
+        }
+    }
+
+    for name in &manifest.tools.discoverable_tools {
+        if !allow_set.contains(name.as_str()) {
+            bail!("manifest.tools.discoverable_tools must be a subset of manifest.tools.allow");
+        }
+    }
+
     Ok(())
 }
 
@@ -94,6 +115,8 @@ mod tests {
                 [tools]
                 allow = ["BASH", "fileList", "shell"]
                 deny = ["Http"]
+                core_tools = [" shell "]
+                discoverable_tools = [" fileList "]
                 session_scope = "current"
             "#,
         )
@@ -102,6 +125,8 @@ mod tests {
         let manifest = load_manifest(&path).unwrap();
         assert_eq!(manifest.tools.allow, vec!["shell", "file_list"]);
         assert_eq!(manifest.tools.deny, vec!["http_request"]);
+        assert_eq!(manifest.tools.core_tools, vec!["shell"]);
+        assert_eq!(manifest.tools.discoverable_tools, vec!["file_list"]);
     }
 
     #[test]
@@ -125,6 +150,30 @@ mod tests {
 
         let err = load_manifest(&path).unwrap_err().to_string();
         assert!(err.contains("manifest.tools.allow"));
+    }
+
+    #[test]
+    fn load_manifest_rejects_core_tools_outside_allowlist() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("agent_manifest.toml");
+        std::fs::write(
+            &path,
+            r#"
+                schema_version = "1"
+
+                [identity]
+                name = "R.A.I.N.Agent"
+
+                [tools]
+                allow = ["shell"]
+                core_tools = ["file_read"]
+                session_scope = "current"
+            "#,
+        )
+        .unwrap();
+
+        let err = load_manifest(&path).unwrap_err().to_string();
+        assert!(err.contains("core_tools"));
     }
 
     #[test]

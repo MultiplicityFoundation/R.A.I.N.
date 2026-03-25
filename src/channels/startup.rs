@@ -901,6 +901,7 @@ pub async fn start_channels(config: Config) -> Result<()> {
         tools_registry: Arc::clone(&tools_registry),
         observer,
         system_prompt: Arc::new(system_prompt),
+        dynamic_tools: DynamicToolRuntimeState::default(),
         model: Arc::new(model.clone()),
         temperature,
         auto_save_memory: config.memory.auto_save,

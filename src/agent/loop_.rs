@@ -32,6 +32,7 @@ use crate::agent::tool_call_parser::{
 #[cfg(test)]
 use crate::agent::tool_filter::{filter_tool_specs_for_turn, glob_match};
 
+use crate::agent::manifest::AgentManifest;
 use crate::approval::{ApprovalManager, ApprovalRequest, ApprovalResponse};
 use crate::config::Config;
 use crate::cost::types::BudgetCheck;
@@ -50,7 +51,7 @@ use anyhow::Result;
 use std::collections::HashSet;
 use std::fmt::Write;
 use std::io::Write as _;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
@@ -192,10 +193,11 @@ pub(crate) struct AgentTurnContext<'a> {
 /// execute tools, and loop until the LLM produces a final text response.
 /// When `silent` is true, suppresses stdout (for channel use).
 pub(crate) async fn agent_turn(context: AgentTurnContext<'_>) -> Result<String> {
-    run_tool_call_loop(
+    run_tool_call_loop_with_options(
         context.provider,
         context.history,
         context.tools_registry,
+        None,
         context.observer,
         context.provider_name,
         context.model,
@@ -213,6 +215,7 @@ pub(crate) async fn agent_turn(context: AgentTurnContext<'_>) -> Result<String> 
         context.dedup_exempt_tools,
         context.activated_tools,
         context.model_switch_callback,
+        None,
         &crate::config::PacingConfig::default(),
     )
     .await
@@ -256,6 +259,60 @@ pub(crate) async fn run_tool_call_loop(
     model_switch_callback: Option<ModelSwitchCallback>,
     pacing: &crate::config::PacingConfig,
 ) -> Result<String> {
+    run_tool_call_loop_with_options(
+        provider,
+        history,
+        tools_registry,
+        None,
+        observer,
+        provider_name,
+        model,
+        temperature,
+        silent,
+        approval,
+        channel_name,
+        channel_reply_target,
+        multimodal_config,
+        max_tool_iterations,
+        cancellation_token,
+        on_delta,
+        hooks,
+        excluded_tools,
+        dedup_exempt_tools,
+        activated_tools,
+        model_switch_callback,
+        None,
+        pacing,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn run_tool_call_loop_with_options(
+    provider: &dyn Provider,
+    history: &mut Vec<ChatMessage>,
+    tools_registry: &[Box<dyn Tool>],
+    toolbox_manager: Option<&crate::tools::ToolboxManager>,
+    observer: &dyn Observer,
+    provider_name: &str,
+    model: &str,
+    temperature: f64,
+    silent: bool,
+    approval: Option<&ApprovalManager>,
+    channel_name: &str,
+    channel_reply_target: Option<&str>,
+    multimodal_config: &crate::config::MultimodalConfig,
+    max_tool_iterations: usize,
+    cancellation_token: Option<CancellationToken>,
+    on_delta: Option<tokio::sync::mpsc::Sender<String>>,
+    hooks: Option<&crate::hooks::HookRunner>,
+    excluded_tools: &[String],
+    dedup_exempt_tools: &[String],
+    activated_tools: Option<&std::sync::Arc<std::sync::Mutex<crate::tools::ActivatedToolSet>>>,
+    model_switch_callback: Option<ModelSwitchCallback>,
+    system_prompt_renderer: Option<&(dyn Fn() -> String + Send + Sync)>,
+    pacing: &crate::config::PacingConfig,
+) -> Result<String> {
     let max_iterations = if max_tool_iterations == 0 {
         DEFAULT_MAX_TOOL_ITERATIONS
     } else {
@@ -274,6 +331,10 @@ pub(crate) async fn run_tool_call_loop(
 
     for iteration in 0..max_iterations {
         let mut seen_tool_signatures: HashSet<(String, String)> = HashSet::new();
+
+        if let Some(renderer) = system_prompt_renderer {
+            replace_or_insert_system_prompt(history, renderer());
+        }
 
         if cancellation_token
             .as_ref()
@@ -305,18 +366,12 @@ pub(crate) async fn run_tool_call_loop(
         }
 
         // Rebuild tool_specs each iteration so newly activated deferred tools appear.
-        let mut tool_specs: Vec<crate::tools::ToolSpec> = tools_registry
-            .iter()
-            .filter(|tool| !excluded_tools.iter().any(|ex| ex == tool.name()))
-            .map(|tool| tool.spec())
-            .collect();
-        if let Some(at) = activated_tools {
-            for spec in at.lock().unwrap_or_else(|e| e.into_inner()).tool_specs() {
-                if !excluded_tools.iter().any(|ex| ex == &spec.name) {
-                    tool_specs.push(spec);
-                }
-            }
-        }
+        let tool_specs = current_tool_specs_for_turn(
+            toolbox_manager,
+            tools_registry,
+            excluded_tools,
+            activated_tools,
+        );
         let use_native_tools = provider.supports_native_tools() && !tool_specs.is_empty();
 
         let image_marker_count = multimodal::count_image_markers(history);
@@ -865,6 +920,7 @@ pub(crate) async fn run_tool_call_loop(
             execute_tools_parallel(
                 &executable_calls,
                 tools_registry,
+                toolbox_manager,
                 activated_tools,
                 observer,
                 cancellation_token.as_ref(),
@@ -874,6 +930,7 @@ pub(crate) async fn run_tool_call_loop(
             execute_tools_sequential(
                 &executable_calls,
                 tools_registry,
+                toolbox_manager,
                 activated_tools,
                 observer,
                 cancellation_token.as_ref(),
@@ -1047,8 +1104,213 @@ pub(crate) async fn run_tool_call_loop(
     anyhow::bail!("Agent exceeded maximum tool iterations ({max_iterations})")
 }
 
+fn replace_or_insert_system_prompt(history: &mut Vec<ChatMessage>, system_prompt: String) {
+    if history
+        .first()
+        .is_some_and(|message| message.role == "system")
+    {
+        history[0] = ChatMessage::system(&system_prompt);
+    } else {
+        history.insert(0, ChatMessage::system(&system_prompt));
+    }
+}
+
+pub(crate) fn current_tool_specs_for_turn(
+    toolbox_manager: Option<&crate::tools::ToolboxManager>,
+    tools_registry: &[Box<dyn Tool>],
+    excluded_tools: &[String],
+    activated_tools: Option<&std::sync::Arc<std::sync::Mutex<crate::tools::ActivatedToolSet>>>,
+) -> Vec<crate::tools::ToolSpec> {
+    let mut specs = if let Some(manager) = toolbox_manager {
+        manager.active_tool_specs()
+    } else {
+        tools_registry.iter().map(|tool| tool.spec()).collect()
+    };
+    specs.retain(|spec| !excluded_tools.iter().any(|name| name == &spec.name));
+
+    let mut seen = specs
+        .iter()
+        .map(|spec| spec.name.clone())
+        .collect::<HashSet<_>>();
+    if let Some(at) = activated_tools {
+        for spec in at.lock().unwrap_or_else(|e| e.into_inner()).tool_specs() {
+            if excluded_tools.iter().any(|name| name == &spec.name) {
+                continue;
+            }
+            if seen.insert(spec.name.clone()) {
+                specs.push(spec);
+            }
+        }
+    }
+
+    specs
+}
+
+pub(crate) fn render_runtime_system_prompt(
+    workspace_dir: &Path,
+    model_name: &str,
+    tool_desc_catalog: &[(String, String)],
+    skills: &[crate::skills::Skill],
+    identity_config: Option<&crate::config::IdentityConfig>,
+    bootstrap_max_chars: Option<usize>,
+    autonomy_config: Option<&crate::config::AutonomyConfig>,
+    native_tools: bool,
+    skills_prompt_mode: crate::config::SkillsPromptInjectionMode,
+    tool_descriptions: Option<&ToolDescriptions>,
+    toolbox_manager: Option<&crate::tools::ToolboxManager>,
+    tools_registry: &[Box<dyn Tool>],
+    activated_tools: Option<&std::sync::Arc<std::sync::Mutex<crate::tools::ActivatedToolSet>>>,
+    excluded_tools: &[String],
+    deferred_section: &str,
+) -> String {
+    let active_specs = current_tool_specs_for_turn(
+        toolbox_manager,
+        tools_registry,
+        excluded_tools,
+        activated_tools,
+    );
+    let active_names = active_specs
+        .iter()
+        .map(|spec| spec.name.as_str())
+        .collect::<HashSet<_>>();
+
+    let mut prompt_tools = tool_desc_catalog
+        .iter()
+        .filter(|(name, _)| active_names.contains(name.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+    let mut included = prompt_tools
+        .iter()
+        .map(|(name, _)| name.clone())
+        .collect::<HashSet<_>>();
+    for spec in &active_specs {
+        if included.insert(spec.name.clone()) {
+            prompt_tools.push((spec.name.clone(), spec.description.clone()));
+        }
+    }
+
+    let prompt_tool_refs = prompt_tools
+        .iter()
+        .map(|(name, desc)| (name.as_str(), desc.as_str()))
+        .collect::<Vec<_>>();
+    let mut prompt = crate::channels::build_system_prompt_with_mode_and_autonomy(
+        workspace_dir,
+        model_name,
+        &prompt_tool_refs,
+        skills,
+        identity_config,
+        bootstrap_max_chars,
+        autonomy_config,
+        native_tools,
+        skills_prompt_mode,
+    );
+
+    if !native_tools {
+        prompt.push_str(&build_tool_instructions_from_specs(
+            &active_specs,
+            tool_descriptions,
+        ));
+    }
+
+    if let Some(manager) = toolbox_manager {
+        let discovery_section = manager.discovery_prompt_section();
+        if !discovery_section.is_empty() {
+            prompt.push('\n');
+            prompt.push_str(&discovery_section);
+        }
+    }
+
+    if !deferred_section.is_empty() {
+        prompt.push('\n');
+        prompt.push_str(deferred_section);
+    }
+
+    prompt
+}
+
+pub(crate) fn load_runtime_agent_manifest(workspace_dir: &Path) -> Result<Option<AgentManifest>> {
+    let manifest_path = workspace_dir.join("agent_manifest.toml");
+    if !manifest_path.exists() {
+        return Ok(None);
+    }
+
+    Ok(Some(crate::agent::manifest_loader::load_manifest(
+        &manifest_path,
+    )?))
+}
+
+pub(crate) fn build_runtime_toolbox_template(
+    shared_tools: &[Arc<dyn Tool>],
+    manifest: Option<&AgentManifest>,
+) -> crate::tools::ToolboxManager {
+    let allowed_tools = manifest
+        .map(|value| value.tools.allow.as_slice())
+        .unwrap_or(&[]);
+    let denied_tools = manifest
+        .map(|value| value.tools.deny.as_slice())
+        .unwrap_or(&[]);
+
+    let filtered_tools = shared_tools
+        .iter()
+        .filter(|tool| {
+            (allowed_tools.is_empty() || allowed_tools.iter().any(|name| name == tool.name()))
+                && !denied_tools.iter().any(|name| name == tool.name())
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+
+    let toolbox = crate::tools::ToolboxManager::from_registry(
+        filtered_tools,
+        crate::tools::ToolboxAccessConfig {
+            core_tools: manifest
+                .map(|value| value.tools.core_tools.clone())
+                .unwrap_or_default(),
+            discoverable_tools: manifest
+                .map(|value| value.tools.discoverable_tools.clone())
+                .unwrap_or_default(),
+            ..crate::tools::ToolboxAccessConfig::default()
+        },
+    );
+    let discovery_tool: Arc<dyn Tool> =
+        Arc::new(crate::tools::ToolDiscoveryTool::new(toolbox.clone()));
+    toolbox.register_system_tool(discovery_tool, ["discovery", "system"]);
+    toolbox
+}
+
 /// Build the tool instruction block for the system prompt so the LLM knows
 /// how to invoke tools.
+pub(crate) fn build_tool_instructions_from_specs(
+    tool_specs: &[crate::tools::ToolSpec],
+    tool_descriptions: Option<&ToolDescriptions>,
+) -> String {
+    let mut instructions = String::new();
+    instructions.push_str("\n## Tool Use Protocol\n\n");
+    instructions.push_str("To use a tool, wrap a JSON object in <tool_call></tool_call> tags:\n\n");
+    instructions.push_str("```\n<tool_call>\n{\"name\": \"tool_name\", \"arguments\": {\"param\": \"value\"}}\n</tool_call>\n```\n\n");
+    instructions.push_str(
+        "CRITICAL: Output actual <tool_call> tagsâ€”never describe steps or give examples.\n\n",
+    );
+    instructions.push_str("Example: User says \"what's the date?\". You MUST respond with:\n<tool_call>\n{\"name\":\"shell\",\"arguments\":{\"command\":\"date\"}}\n</tool_call>\n\n");
+    instructions.push_str("You may use multiple tool calls in a single response. ");
+    instructions.push_str("After tool execution, results appear in <tool_result> tags. ");
+    instructions
+        .push_str("Continue reasoning with the results until you can give a final answer.\n\n");
+    instructions.push_str("### Available Tools\n\n");
+
+    for spec in tool_specs {
+        let desc = tool_descriptions
+            .and_then(|td| td.get(&spec.name))
+            .unwrap_or(&spec.description);
+        let _ = writeln!(
+            instructions,
+            "**{}**: {}\nParameters: `{}`\n",
+            spec.name, desc, spec.parameters
+        );
+    }
+
+    instructions
+}
+
 pub(crate) fn build_tool_instructions(
     tools_registry: &[Box<dyn Tool>],
     tool_descriptions: Option<&ToolDescriptions>,
@@ -1266,6 +1528,17 @@ pub async fn run(
     }
 
     // ── Resolve provider ─────────────────────────────────────────
+    let shared_tools = tools_registry
+        .into_iter()
+        .map(Arc::<dyn Tool>::from)
+        .collect::<Vec<_>>();
+    let tools_registry = shared_tools
+        .iter()
+        .map(|tool| Box::new(crate::tools::ArcToolRef(Arc::clone(tool))) as Box<dyn Tool>)
+        .collect::<Vec<_>>();
+    let manifest = load_runtime_agent_manifest(&config.workspace_dir)?;
+    let toolbox_template = build_runtime_toolbox_template(&shared_tools, manifest.as_ref());
+
     let mut provider_name = provider_override
         .as_deref()
         .or(config.default_provider.as_deref())
@@ -1451,29 +1724,10 @@ pub async fn run(
     } else {
         None
     };
-    let native_tools = provider.supports_native_tools();
-    let mut system_prompt = crate::channels::build_system_prompt_with_mode_and_autonomy(
-        &config.workspace_dir,
-        &model_name,
-        &tool_descs,
-        &skills,
-        Some(&config.identity),
-        bootstrap_max_chars,
-        Some(&config.autonomy),
-        native_tools,
-        config.skills.prompt_injection_mode,
-    );
-
-    // Append structured tool-use instructions with schemas (only for non-native providers)
-    if !native_tools {
-        system_prompt.push_str(&build_tool_instructions(&tools_registry, Some(&i18n_descs)));
-    }
-
-    // Append deferred MCP tool names so the LLM knows what is available
-    if !deferred_section.is_empty() {
-        system_prompt.push('\n');
-        system_prompt.push_str(&deferred_section);
-    }
+    let tool_desc_catalog = tool_descs
+        .iter()
+        .map(|(name, desc)| ((*name).to_string(), (*desc).to_string()))
+        .collect::<Vec<_>>();
 
     // ── Approval manager (supervised mode) ───────────────────────
     let approval_manager = if interactive {
@@ -1528,11 +1782,9 @@ pub async fn run(
         } else {
             format!("{context}[{now}] {msg}")
         };
+        let session_toolbox = toolbox_template.fork_session();
 
-        let mut history = vec![
-            ChatMessage::system(&system_prompt),
-            ChatMessage::user(&enriched),
-        ];
+        let mut history = vec![ChatMessage::system(""), ChatMessage::user(&enriched)];
 
         // Compute per-turn excluded MCP tools from tool_filter_groups.
         let excluded_tools =
@@ -1541,10 +1793,31 @@ pub async fn run(
         #[allow(unused_assignments)]
         let mut response = String::new();
         loop {
-            match run_tool_call_loop(
+            let native_tools = provider.supports_native_tools();
+            let prompt_renderer = || {
+                render_runtime_system_prompt(
+                    &config.workspace_dir,
+                    &model_name,
+                    &tool_desc_catalog,
+                    &skills,
+                    Some(&config.identity),
+                    bootstrap_max_chars,
+                    Some(&config.autonomy),
+                    native_tools,
+                    config.skills.prompt_injection_mode,
+                    Some(&i18n_descs),
+                    Some(&session_toolbox),
+                    &tools_registry,
+                    activated_handle.as_ref(),
+                    &excluded_tools,
+                    &deferred_section,
+                )
+            };
+            match run_tool_call_loop_with_options(
                 provider.as_ref(),
                 &mut history,
                 &tools_registry,
+                Some(&session_toolbox),
                 observer.as_ref(),
                 &provider_name,
                 &model_name,
@@ -1562,6 +1835,7 @@ pub async fn run(
                 &config.agent.tool_call_dedup_exempt,
                 activated_handle.as_ref(),
                 Some(model_switch_callback.clone()),
+                Some(&prompt_renderer),
                 &config.pacing,
             )
             .await
@@ -1634,12 +1908,30 @@ pub async fn run(
         println!("🦀 R.A.I.N. Interactive Mode");
         println!("Type /help for commands.\n");
         let cli = crate::channels::CliChannel::new();
+        let mut session_toolbox = toolbox_template.fork_session();
+        let initial_prompt = render_runtime_system_prompt(
+            &config.workspace_dir,
+            &model_name,
+            &tool_desc_catalog,
+            &skills,
+            Some(&config.identity),
+            bootstrap_max_chars,
+            Some(&config.autonomy),
+            provider.supports_native_tools(),
+            config.skills.prompt_injection_mode,
+            Some(&i18n_descs),
+            Some(&session_toolbox),
+            &tools_registry,
+            activated_handle.as_ref(),
+            &[],
+            &deferred_section,
+        );
 
         // Persistent conversation history across turns
         let mut history = if let Some(path) = session_state_file.as_deref() {
-            load_interactive_session_history(path, &system_prompt)?
+            load_interactive_session_history(path, &initial_prompt)?
         } else {
-            vec![ChatMessage::system(&system_prompt)]
+            vec![ChatMessage::system(&initial_prompt)]
         };
 
         loop {
@@ -1698,7 +1990,25 @@ pub async fn run(
                     }
 
                     history.clear();
-                    history.push(ChatMessage::system(&system_prompt));
+                    session_toolbox = toolbox_template.fork_session();
+                    let reset_prompt = render_runtime_system_prompt(
+                        &config.workspace_dir,
+                        &model_name,
+                        &tool_desc_catalog,
+                        &skills,
+                        Some(&config.identity),
+                        bootstrap_max_chars,
+                        Some(&config.autonomy),
+                        provider.supports_native_tools(),
+                        config.skills.prompt_injection_mode,
+                        Some(&i18n_descs),
+                        Some(&session_toolbox),
+                        &tools_registry,
+                        activated_handle.as_ref(),
+                        &[],
+                        &deferred_section,
+                    );
+                    history.push(ChatMessage::system(&reset_prompt));
                     // Clear conversation and daily memory
                     let mut cleared = 0;
                     for category in [MemoryCategory::Conversation, MemoryCategory::Daily] {
@@ -1769,10 +2079,31 @@ pub async fn run(
             );
 
             let response = loop {
-                match run_tool_call_loop(
+                let native_tools = provider.supports_native_tools();
+                let prompt_renderer = || {
+                    render_runtime_system_prompt(
+                        &config.workspace_dir,
+                        &model_name,
+                        &tool_desc_catalog,
+                        &skills,
+                        Some(&config.identity),
+                        bootstrap_max_chars,
+                        Some(&config.autonomy),
+                        native_tools,
+                        config.skills.prompt_injection_mode,
+                        Some(&i18n_descs),
+                        Some(&session_toolbox),
+                        &tools_registry,
+                        activated_handle.as_ref(),
+                        &excluded_tools,
+                        &deferred_section,
+                    )
+                };
+                match run_tool_call_loop_with_options(
                     provider.as_ref(),
                     &mut history,
                     &tools_registry,
+                    Some(&session_toolbox),
                     observer.as_ref(),
                     &provider_name,
                     &model_name,
@@ -1790,6 +2121,7 @@ pub async fn run(
                     &config.agent.tool_call_dedup_exempt,
                     activated_handle.as_ref(),
                     Some(model_switch_callback.clone()),
+                    Some(&prompt_renderer),
                     &config.pacing,
                 )
                 .await

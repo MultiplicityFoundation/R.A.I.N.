@@ -79,7 +79,9 @@ pub mod security_ops;
 pub mod shell;
 pub mod swarm;
 pub mod text_browser;
+pub mod tool_discovery;
 pub mod tool_search;
+pub mod toolbox_manager;
 pub mod traits;
 pub mod verifiable_intent;
 pub mod weather_tool;
@@ -150,7 +152,13 @@ pub use security_ops::SecurityOpsTool;
 pub use shell::ShellTool;
 pub use swarm::SwarmTool;
 pub use text_browser::TextBrowserTool;
+pub use tool_discovery::ToolDiscoveryTool;
 pub use tool_search::ToolSearchTool;
+#[allow(unused_imports)]
+pub use toolbox_manager::{
+    ToolActivationResult, ToolActivationStatus, ToolCatalogEntry, ToolboxAccessConfig,
+    ToolboxManager,
+};
 pub use traits::Tool;
 #[allow(unused_imports)]
 pub use traits::{ToolResult, ToolSpec};

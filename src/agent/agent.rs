@@ -24,8 +24,7 @@ use std::time::Instant;
 
 pub struct Agent {
     provider: Box<dyn Provider>,
-    tools: Vec<Box<dyn Tool>>,
-    tool_specs: Vec<ToolSpec>,
+    toolbox_manager: tools::ToolboxManager,
     memory: Arc<dyn Memory>,
     observer: Arc<dyn Observer>,
     prompt_builder: SystemPromptBuilder,
@@ -65,6 +64,7 @@ fn load_agent_manifest(workspace_dir: &Path) -> Result<Option<AgentManifest>> {
 pub struct AgentBuilder {
     provider: Option<Box<dyn Provider>>,
     tools: Option<Vec<Box<dyn Tool>>>,
+    toolbox_manager: Option<tools::ToolboxManager>,
     memory: Option<Arc<dyn Memory>>,
     observer: Option<Arc<dyn Observer>>,
     prompt_builder: Option<SystemPromptBuilder>,
@@ -95,6 +95,7 @@ impl AgentBuilder {
         Self {
             provider: None,
             tools: None,
+            toolbox_manager: None,
             memory: None,
             observer: None,
             prompt_builder: None,
@@ -128,6 +129,11 @@ impl AgentBuilder {
 
     pub fn tools(mut self, tools: Vec<Box<dyn Tool>>) -> Self {
         self.tools = Some(tools);
+        self
+    }
+
+    pub fn toolbox_manager(mut self, toolbox_manager: tools::ToolboxManager) -> Self {
+        self.toolbox_manager = Some(toolbox_manager);
         self
     }
 
@@ -256,9 +262,6 @@ impl AgentBuilder {
     }
 
     pub fn build(self) -> Result<Agent> {
-        let mut tools = self
-            .tools
-            .ok_or_else(|| anyhow::anyhow!("tools are required"))?;
         let manifest_allowed = self
             .manifest
             .as_ref()
@@ -273,10 +276,37 @@ impl AgentBuilder {
             (None, Some(manifest)) => Some(manifest),
             (existing, None) => existing,
         };
-        if let Some(ref allow_list) = allowed {
-            tools.retain(|t| allow_list.iter().any(|name| name == t.name()));
-        }
-        let tool_specs = tools.iter().map(|tool| tool.spec()).collect();
+        let toolbox_manager = if let Some(toolbox_manager) = self.toolbox_manager {
+            toolbox_manager
+        } else {
+            let mut tools = self
+                .tools
+                .ok_or_else(|| anyhow::anyhow!("tools are required"))?;
+            if let Some(ref allow_list) = allowed {
+                tools.retain(|t| allow_list.iter().any(|name| name == t.name()));
+            }
+
+            let toolbox_manager = tools::ToolboxManager::from_boxed_tools(
+                tools,
+                tools::ToolboxAccessConfig {
+                    core_tools: self
+                        .manifest
+                        .as_ref()
+                        .map(|manifest| manifest.tools.core_tools.clone())
+                        .unwrap_or_default(),
+                    discoverable_tools: self
+                        .manifest
+                        .as_ref()
+                        .map(|manifest| manifest.tools.discoverable_tools.clone())
+                        .unwrap_or_default(),
+                    ..tools::ToolboxAccessConfig::default()
+                },
+            );
+            toolbox_manager
+        };
+        let discovery_tool: Arc<dyn Tool> =
+            Arc::new(tools::ToolDiscoveryTool::new(toolbox_manager.clone()));
+        toolbox_manager.register_system_tool(discovery_tool, ["discovery", "system"]);
 
         let default_memory_loader: Box<dyn MemoryLoader> = if let Some(memory) = self
             .manifest
@@ -297,8 +327,7 @@ impl AgentBuilder {
             provider: self
                 .provider
                 .ok_or_else(|| anyhow::anyhow!("provider is required"))?,
-            tools,
-            tool_specs,
+            toolbox_manager,
             memory: self
                 .memory
                 .ok_or_else(|| anyhow::anyhow!("memory is required"))?,
@@ -364,10 +393,7 @@ impl Agent {
     /// to avoid duplicating the system prompt.
     pub fn seed_history(&mut self, messages: &[ChatMessage]) {
         if self.history.is_empty() {
-            if let Ok(sys) = self.build_system_prompt() {
-                self.history
-                    .push(ConversationMessage::Chat(ChatMessage::system(sys)));
-            }
+            let _ = self.ensure_current_system_prompt();
         }
         for msg in messages {
             if msg.role != "system" {
@@ -543,7 +569,7 @@ impl Agent {
             None
         };
 
-        let mut agent = Agent::builder()
+        let mut builder = Agent::builder()
             .provider(provider)
             .tools(tools)
             .memory(memory)
@@ -570,14 +596,11 @@ impl Agent {
             .skills_prompt_mode(config.skills.prompt_injection_mode)
             .auto_save(config.memory.auto_save)
             .security_summary(Some(security.prompt_summary()))
-            .autonomy_level(config.autonomy.level)
-            .build()?;
-
-        if let Some(agent_manifest) = manifest {
-            agent.manifest = Some(agent_manifest);
+            .autonomy_level(config.autonomy.level);
+        if let Some(agent_manifest) = manifest.clone() {
+            builder = builder.manifest(agent_manifest);
         }
-
-        Ok(agent)
+        Ok(builder.build()?)
     }
 
     fn trim_history(&mut self) {
@@ -608,11 +631,12 @@ impl Agent {
     }
 
     fn build_system_prompt(&self) -> Result<String> {
-        let instructions = self.tool_dispatcher.prompt_instructions(&self.tools);
+        let active_tools = self.toolbox_manager.active_tools_boxed();
+        let instructions = self.tool_dispatcher.prompt_instructions(&active_tools);
         let ctx = PromptContext {
             workspace_dir: &self.workspace_dir,
             model_name: &self.model_name,
-            tools: &self.tools,
+            tools: &active_tools,
             skills: &self.skills,
             skills_prompt_mode: self.skills_prompt_mode,
             identity_config: Some(&self.identity_config),
@@ -626,6 +650,12 @@ impl Agent {
             autonomy_level: self.autonomy_level,
         };
         let mut prompt = self.prompt_builder.build(&ctx)?;
+        let discovery_section = self.toolbox_manager.discovery_prompt_section();
+        if !discovery_section.is_empty() {
+            prompt.push('\n');
+            prompt.push('\n');
+            prompt.push_str(discovery_section.trim_end());
+        }
         if let Some(manifest) = self.manifest.as_ref() {
             prompt.push_str("\n\n## Agent Manifest Identity\n\n");
             let name = manifest.identity.name.as_deref().unwrap_or("Unnamed agent");
@@ -644,10 +674,28 @@ impl Agent {
         Ok(prompt)
     }
 
+    fn ensure_current_system_prompt(&mut self) -> Result<()> {
+        let system_prompt = self.build_system_prompt()?;
+        match self.history.first_mut() {
+            Some(ConversationMessage::Chat(chat)) if chat.role == "system" => {
+                chat.content = system_prompt;
+            }
+            _ => self.history.insert(
+                0,
+                ConversationMessage::Chat(ChatMessage::system(system_prompt)),
+            ),
+        }
+        Ok(())
+    }
+
+    fn current_tool_specs(&self) -> Vec<ToolSpec> {
+        self.toolbox_manager.active_tool_specs()
+    }
+
     async fn execute_tool_call(&self, call: &ParsedToolCall) -> ToolExecutionResult {
         let start = Instant::now();
 
-        let result = if let Some(tool) = self.tools.iter().find(|t| t.name() == call.name) {
+        let result = if let Some(tool) = self.toolbox_manager.active_tool(&call.name) {
             match tool.execute(call.arguments.clone()).await {
                 Ok(r) => {
                     self.observer.record_event(&ObserverEvent::ToolCall {
@@ -683,7 +731,11 @@ impl Agent {
     }
 
     async fn execute_tools(&self, calls: &[ParsedToolCall]) -> Vec<ToolExecutionResult> {
-        if !self.config.parallel_tools {
+        if !self.config.parallel_tools
+            || calls
+                .iter()
+                .any(|call| matches!(call.name.as_str(), "tool_discovery" | "tool_search"))
+        {
             let mut results = Vec::with_capacity(calls.len());
             for call in calls {
                 results.push(self.execute_tool_call(call).await);
@@ -724,11 +776,7 @@ impl Agent {
 
     pub async fn turn(&mut self, user_message: &str) -> Result<String> {
         if self.history.is_empty() {
-            let system_prompt = self.build_system_prompt()?;
-            self.history
-                .push(ConversationMessage::Chat(ChatMessage::system(
-                    system_prompt,
-                )));
+            self.ensure_current_system_prompt()?;
         }
 
         let context = self
@@ -766,7 +814,9 @@ impl Agent {
         let effective_model = self.classify_model(user_message);
 
         for _ in 0..self.config.max_tool_iterations {
+            self.ensure_current_system_prompt()?;
             let messages = self.tool_dispatcher.to_provider_messages(&self.history);
+            let current_tool_specs = self.current_tool_specs();
 
             // Response cache: check before LLM call (only for deterministic, text-only prompts)
             let cache_key = if self.temperature == 0.0 {
@@ -814,7 +864,7 @@ impl Agent {
                     ChatRequest {
                         messages: &messages,
                         tools: if self.tool_dispatcher.should_send_tool_specs() {
-                            Some(&self.tool_specs)
+                            Some(current_tool_specs.as_slice())
                         } else {
                             None
                         },
@@ -1048,6 +1098,50 @@ mod tests {
         }
     }
 
+    struct ToolSpecCaptureProvider {
+        responses: Mutex<Vec<crate::providers::ChatResponse>>,
+        seen_tool_specs: Arc<Mutex<Vec<Vec<String>>>>,
+    }
+
+    #[async_trait]
+    impl Provider for ToolSpecCaptureProvider {
+        async fn chat_with_system(
+            &self,
+            _system_prompt: Option<&str>,
+            _message: &str,
+            _model: &str,
+            _temperature: f64,
+        ) -> Result<String> {
+            Ok("ok".into())
+        }
+
+        async fn chat(
+            &self,
+            request: ChatRequest<'_>,
+            _model: &str,
+            _temperature: f64,
+        ) -> Result<crate::providers::ChatResponse> {
+            self.seen_tool_specs.lock().push(
+                request
+                    .tools
+                    .unwrap_or(&[])
+                    .iter()
+                    .map(|spec| spec.name.clone())
+                    .collect(),
+            );
+            let mut guard = self.responses.lock();
+            if guard.is_empty() {
+                return Ok(crate::providers::ChatResponse {
+                    text: Some("done".into()),
+                    tool_calls: vec![],
+                    usage: None,
+                    reasoning_content: None,
+                });
+            }
+            Ok(guard.remove(0))
+        }
+    }
+
     struct MockTool;
     struct MockOtherTool;
 
@@ -1181,6 +1275,79 @@ mod tests {
             .history()
             .iter()
             .any(|msg| matches!(msg, ConversationMessage::ToolResults(_))));
+    }
+
+    #[tokio::test]
+    async fn tool_discovery_activation_refreshes_visible_tool_specs() {
+        let seen_tool_specs = Arc::new(Mutex::new(Vec::new()));
+        let provider = Box::new(ToolSpecCaptureProvider {
+            responses: Mutex::new(vec![
+                crate::providers::ChatResponse {
+                    text: Some(String::new()),
+                    tool_calls: vec![crate::providers::ToolCall {
+                        id: "tc1".into(),
+                        name: "tool_discovery".into(),
+                        arguments: r#"{"action":"activate","tool_name":"echo"}"#.into(),
+                    }],
+                    usage: None,
+                    reasoning_content: None,
+                },
+                crate::providers::ChatResponse {
+                    text: Some("activated".into()),
+                    tool_calls: vec![],
+                    usage: None,
+                    reasoning_content: None,
+                },
+            ]),
+            seen_tool_specs: Arc::clone(&seen_tool_specs),
+        });
+
+        let memory_cfg = crate::config::MemoryConfig {
+            backend: "none".into(),
+            ..crate::config::MemoryConfig::default()
+        };
+        let mem: Arc<dyn Memory> = Arc::from(
+            crate::memory::create_memory(&memory_cfg, std::path::Path::new("/tmp"), None)
+                .expect("memory creation should succeed with valid config"),
+        );
+        let observer: Arc<dyn Observer> = Arc::from(crate::observability::NoopObserver {});
+        let manifest = crate::agent::manifest::AgentManifest {
+            schema_version: "1".into(),
+            identity: crate::agent::manifest::IdentitySection::default(),
+            tools: crate::agent::manifest::ToolScope {
+                allow: vec!["echo".into()],
+                deny: vec![],
+                core_tools: vec![],
+                discoverable_tools: vec!["echo".into()],
+                session_scope: crate::agent::manifest::SessionScope::Current,
+            },
+            memory: None,
+            rag: None,
+            orchestration: None,
+            provider_defaults: None,
+        };
+
+        let mut agent = Agent::builder()
+            .provider(provider)
+            .tools(vec![Box::new(MockTool)])
+            .memory(mem)
+            .observer(observer)
+            .tool_dispatcher(Box::new(NativeToolDispatcher))
+            .workspace_dir(std::path::PathBuf::from("/tmp"))
+            .manifest(manifest)
+            .build()
+            .expect("agent builder should succeed with valid config");
+
+        let response = agent.turn("load the tool when needed").await.unwrap();
+        assert_eq!(response, "activated");
+
+        let seen = seen_tool_specs.lock();
+        assert_eq!(seen.len(), 2);
+        assert_eq!(seen[0], vec!["tool_discovery".to_string()]);
+        assert_eq!(
+            seen[1],
+            vec!["echo".to_string(), "tool_discovery".to_string()]
+        );
     }
 
     #[tokio::test]
@@ -1352,8 +1519,10 @@ mod tests {
             .build()
             .expect("agent builder should succeed with valid config");
 
-        assert_eq!(agent.tool_specs.len(), 1);
-        assert_eq!(agent.tool_specs[0].name, "echo");
+        let tool_specs = agent.current_tool_specs();
+        assert_eq!(tool_specs.len(), 2);
+        assert_eq!(tool_specs[0].name, "echo");
+        assert_eq!(tool_specs[1].name, "tool_discovery");
     }
 
     #[test]
@@ -1383,10 +1552,9 @@ mod tests {
             .build()
             .expect("agent builder should succeed with valid config");
 
-        assert!(
-            agent.tool_specs.is_empty(),
-            "No tools should match a non-existent allowlist entry"
-        );
+        let tool_specs = agent.current_tool_specs();
+        assert_eq!(tool_specs.len(), 1);
+        assert_eq!(tool_specs[0].name, "tool_discovery");
     }
 
     #[test]
@@ -1410,6 +1578,8 @@ mod tests {
             tools: crate::agent::manifest::ToolScope {
                 allow: vec!["echo".into()],
                 deny: vec![],
+                core_tools: vec![],
+                discoverable_tools: vec![],
                 session_scope: crate::agent::manifest::SessionScope::Current,
             },
             memory: None,
@@ -1430,8 +1600,10 @@ mod tests {
             .build()
             .expect("agent builder should succeed with valid config");
 
-        assert_eq!(agent.tool_specs.len(), 1);
-        assert_eq!(agent.tool_specs[0].name, "echo");
+        let tool_specs = agent.current_tool_specs();
+        assert_eq!(tool_specs.len(), 2);
+        assert_eq!(tool_specs[0].name, "echo");
+        assert_eq!(tool_specs[1].name, "tool_discovery");
     }
 
     #[test]
@@ -1459,6 +1631,8 @@ mod tests {
             tools: crate::agent::manifest::ToolScope {
                 allow: vec!["echo".into()],
                 deny: vec![],
+                core_tools: vec![],
+                discoverable_tools: vec![],
                 session_scope: crate::agent::manifest::SessionScope::Current,
             },
             memory: None,
@@ -1548,6 +1722,8 @@ system_prompt = "Focus on resonance."
 
 [tools]
 allow = ["file_read", "web_search"]
+core_tools = ["file_read"]
+discoverable_tools = ["web_search"]
 
 [memory]
 recall_limit = 8
@@ -1563,6 +1739,8 @@ category = "core"
 
         assert_eq!(parsed.identity.name.as_deref(), Some("R.A.I.N.Agent"));
         assert_eq!(parsed.tools.allow, vec!["file_read", "shell"]);
+        assert_eq!(parsed.tools.core_tools, vec!["file_read"]);
+        assert_eq!(parsed.tools.discoverable_tools, vec!["shell"]);
         let memory = parsed.memory.expect("memory config should be present");
         assert_eq!(memory.recall_limit, Some(8));
         assert_eq!(memory.min_relevance_score, Some(0.6));

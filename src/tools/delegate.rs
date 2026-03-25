@@ -1,9 +1,10 @@
 use super::traits::{Tool, ToolResult};
-use crate::agent::loop_::run_tool_call_loop;
+use crate::agent::dispatcher::{NativeToolDispatcher, ToolDispatcher, XmlToolDispatcher};
 use crate::agent::prompt::{PromptContext, SystemPromptBuilder};
 use crate::config::{DelegateAgentConfig, DelegateToolConfig};
+use crate::memory::Memory;
 use crate::observability::traits::{Observer, ObserverEvent, ObserverMetric};
-use crate::providers::{self, ChatMessage, Provider};
+use crate::providers::{self, Provider};
 use crate::security::policy::ToolOperation;
 use crate::security::SecurityPolicy;
 use async_trait::async_trait;
@@ -305,7 +306,7 @@ impl Tool for DelegateTool {
                 .execute_agentic(
                     agent_name,
                     agent_config,
-                    &*provider,
+                    provider,
                     &full_prompt,
                     temperature,
                 )
@@ -451,7 +452,7 @@ impl DelegateTool {
         &self,
         agent_name: &str,
         agent_config: &DelegateAgentConfig,
-        provider: &dyn Provider,
+        provider: Box<dyn Provider>,
         full_prompt: &str,
         temperature: f64,
     ) -> anyhow::Result<ToolResult> {
@@ -502,46 +503,46 @@ impl DelegateTool {
             });
         }
 
-        // Build enriched system prompt with tools, skills, workspace, datetime context.
-        let enriched_system_prompt =
-            self.build_enriched_system_prompt(agent_config, &sub_tools, &self.workspace_dir);
-
-        let mut history = Vec::new();
-        if let Some(system_prompt) = enriched_system_prompt.as_ref() {
-            history.push(ChatMessage::system(system_prompt.clone()));
+        let noop_observer: Arc<dyn Observer> = Arc::new(NoopObserver);
+        let memory_cfg = crate::config::MemoryConfig {
+            backend: "none".into(),
+            ..crate::config::MemoryConfig::default()
+        };
+        let memory: Arc<dyn Memory> = Arc::from(crate::memory::create_memory(
+            &memory_cfg,
+            &self.workspace_dir,
+            None,
+        )?);
+        let tool_dispatcher: Box<dyn ToolDispatcher> = if provider.supports_native_tools() {
+            Box::new(NativeToolDispatcher)
+        } else {
+            Box::new(XmlToolDispatcher)
+        };
+        let manifest = self.load_delegate_manifest(agent_config)?;
+        let mut builder = crate::agent::Agent::builder()
+            .provider(provider)
+            .tools(sub_tools)
+            .memory(memory)
+            .observer(noop_observer)
+            .tool_dispatcher(tool_dispatcher)
+            .workspace_dir(self.workspace_dir.clone())
+            .config(crate::config::AgentConfig {
+                max_tool_iterations: agent_config.max_iterations,
+                ..crate::config::AgentConfig::default()
+            })
+            .model_name(agent_config.model.clone())
+            .temperature(temperature);
+        if let Some(manifest) = manifest {
+            builder = builder.manifest(manifest);
         }
-        history.push(ChatMessage::user(full_prompt.to_string()));
-
-        let noop_observer = NoopObserver;
+        let mut agent = builder.build()?;
 
         let agentic_timeout_secs = agent_config
             .agentic_timeout_secs
             .unwrap_or(self.delegate_config.agentic_timeout_secs);
         let result = tokio::time::timeout(
             Duration::from_secs(agentic_timeout_secs),
-            run_tool_call_loop(
-                provider,
-                &mut history,
-                &sub_tools,
-                &noop_observer,
-                &agent_config.provider,
-                &agent_config.model,
-                temperature,
-                true,
-                None,
-                "delegate",
-                None,
-                &self.multimodal_config,
-                agent_config.max_iterations,
-                None,
-                None,
-                None,
-                &[],
-                &[],
-                None,
-                None,
-                &crate::config::PacingConfig::default(),
-            ),
+            agent.run_single(full_prompt),
         )
         .await;
 
@@ -576,6 +577,30 @@ impl DelegateTool {
                 )),
             }),
         }
+    }
+
+    fn load_delegate_manifest(
+        &self,
+        agent_config: &DelegateAgentConfig,
+    ) -> anyhow::Result<Option<crate::agent::manifest::AgentManifest>> {
+        let Some(path) = agent_config
+            .manifest_path
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            return Ok(None);
+        };
+
+        let manifest_path = if Path::new(path).is_absolute() {
+            PathBuf::from(path)
+        } else {
+            self.workspace_dir.join(path)
+        };
+
+        Ok(Some(crate::agent::manifest_loader::load_manifest(
+            &manifest_path,
+        )?))
     }
 }
 
@@ -630,6 +655,7 @@ mod tests {
     use crate::config::schema::{
         DEFAULT_DELEGATE_AGENTIC_TIMEOUT_SECS, DEFAULT_DELEGATE_TIMEOUT_SECS,
     };
+    use crate::providers::traits::ProviderCapabilities;
     use crate::providers::{ChatRequest, ChatResponse, ToolCall};
     use crate::security::{AutonomyLevel, SecurityPolicy};
     use anyhow::anyhow;
@@ -720,6 +746,13 @@ mod tests {
 
     #[async_trait]
     impl Provider for OneToolThenFinalProvider {
+        fn capabilities(&self) -> ProviderCapabilities {
+            ProviderCapabilities {
+                native_tool_calling: true,
+                ..ProviderCapabilities::default()
+            }
+        }
+
         async fn chat_with_system(
             &self,
             _system_prompt: Option<&str>,
@@ -763,6 +796,13 @@ mod tests {
 
     #[async_trait]
     impl Provider for InfiniteToolCallProvider {
+        fn capabilities(&self) -> ProviderCapabilities {
+            ProviderCapabilities {
+                native_tool_calling: true,
+                ..ProviderCapabilities::default()
+            }
+        }
+
         async fn chat_with_system(
             &self,
             _system_prompt: Option<&str>,
@@ -796,6 +836,13 @@ mod tests {
 
     #[async_trait]
     impl Provider for FailingProvider {
+        fn capabilities(&self) -> ProviderCapabilities {
+            ProviderCapabilities {
+                native_tool_calling: true,
+                ..ProviderCapabilities::default()
+            }
+        }
+
         async fn chat_with_system(
             &self,
             _system_prompt: Option<&str>,
@@ -1183,7 +1230,7 @@ mod tests {
 
         let provider = OneToolThenFinalProvider;
         let result = tool
-            .execute_agentic("agentic", &config, &provider, "run", 0.2)
+            .execute_agentic("agentic", &config, Box::new(provider), "run", 0.2)
             .await
             .unwrap();
 
@@ -1205,7 +1252,7 @@ mod tests {
 
         let provider = OneToolThenFinalProvider;
         let result = tool
-            .execute_agentic("agentic", &config, &provider, "run", 0.2)
+            .execute_agentic("agentic", &config, Box::new(provider), "run", 0.2)
             .await
             .unwrap();
 
@@ -1225,7 +1272,7 @@ mod tests {
 
         let provider = InfiniteToolCallProvider;
         let result = tool
-            .execute_agentic("agentic", &config, &provider, "run", 0.2)
+            .execute_agentic("agentic", &config, Box::new(provider), "run", 0.2)
             .await
             .unwrap();
 
@@ -1245,7 +1292,7 @@ mod tests {
 
         let provider = FailingProvider;
         let result = tool
-            .execute_agentic("agentic", &config, &provider, "run", 0.2)
+            .execute_agentic("agentic", &config, Box::new(provider), "run", 0.2)
             .await
             .unwrap();
 
@@ -1289,6 +1336,13 @@ mod tests {
 
     #[async_trait]
     impl Provider for McpToolThenFinalProvider {
+        fn capabilities(&self) -> ProviderCapabilities {
+            ProviderCapabilities {
+                native_tool_calling: true,
+                ..ProviderCapabilities::default()
+            }
+        }
+
         async fn chat_with_system(
             &self,
             _system_prompt: Option<&str>,
@@ -1341,7 +1395,7 @@ mod tests {
 
         let provider = McpToolThenFinalProvider;
         let result = tool
-            .execute_agentic("agentic", &config, &provider, "run mcp", 0.2)
+            .execute_agentic("agentic", &config, Box::new(provider), "run mcp", 0.2)
             .await
             .unwrap();
 

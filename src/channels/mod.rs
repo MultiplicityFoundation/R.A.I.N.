@@ -98,11 +98,12 @@ pub use whatsapp::WhatsAppChannel;
 pub use whatsapp_web::WhatsAppWebChannel;
 
 use crate::agent::loop_::{
-    build_tool_instructions, is_model_switch_requested, run_tool_call_loop, scrub_credentials,
-    ModelSwitchState,
+    build_runtime_toolbox_template, build_tool_instructions, is_model_switch_requested,
+    load_runtime_agent_manifest, render_runtime_system_prompt, scrub_credentials, ModelSwitchState,
 };
 use crate::approval::ApprovalManager;
 use crate::config::Config;
+use crate::i18n::ToolDescriptions;
 use crate::identity;
 use crate::memory::{self, Memory};
 use crate::observability::traits::{ObserverEvent, ObserverMetric};
@@ -330,6 +331,15 @@ struct ChannelCostTrackingState {
     prices: Arc<HashMap<String, crate::config::schema::ModelPricing>>,
 }
 
+#[derive(Clone, Default)]
+struct DynamicToolRuntimeState {
+    toolbox_template: tools::ToolboxManager,
+    tool_descs: Arc<Vec<(String, String)>>,
+    tool_descriptions: Option<Arc<ToolDescriptions>>,
+    deferred_section: Arc<String>,
+    bootstrap_max_chars: Option<usize>,
+}
+
 #[derive(Clone)]
 pub(crate) struct ChannelRuntimeContext {
     channels_by_name: Arc<HashMap<String, Arc<dyn Channel>>>,
@@ -340,6 +350,7 @@ pub(crate) struct ChannelRuntimeContext {
     tools_registry: Arc<Vec<Box<dyn Tool>>>,
     observer: Arc<dyn Observer>,
     system_prompt: Arc<String>,
+    dynamic_tools: DynamicToolRuntimeState,
     model: Arc<String>,
     temperature: f64,
     auto_save_memory: bool,
@@ -1354,7 +1365,7 @@ async fn process_channel_message(
         clear_sender_history(ctx.as_ref(), &history_key);
     }
 
-    let had_prior_history = if force_fresh_session {
+    let _had_prior_history = if force_fresh_session {
         false
     } else {
         ctx.conversation_histories
@@ -1469,20 +1480,18 @@ async fn process_channel_message(
         format!("{sender_memory}\n{group_memory}")
     };
 
-    // Use refreshed system prompt for new sessions (master's /new support),
-    // and inject memory into system prompt (not user message) so it
-    // doesn't pollute session history and is re-fetched each turn.
-    let base_system_prompt = if had_prior_history {
-        ctx.system_prompt.as_str().to_string()
+    let session_toolbox = if msg.channel == "cli" || ctx.autonomy_level == AutonomyLevel::Full {
+        ctx.dynamic_tools.toolbox_template.fork_session()
     } else {
-        refreshed_new_session_system_prompt(ctx.as_ref())
+        ctx.dynamic_tools
+            .toolbox_template
+            .fork_session_with_exclusions(ctx.non_cli_excluded_tools.as_ref())
     };
-    let mut system_prompt =
-        build_channel_system_prompt(&base_system_prompt, &msg.channel, &msg.reply_target);
-    if !memory_context.is_empty() {
-        let _ = write!(system_prompt, "\n\n{memory_context}");
-    }
-    let mut history = vec![ChatMessage::system(system_prompt)];
+    let message_skills = crate::skills::load_skills_with_config(
+        ctx.workspace_dir.as_ref(),
+        ctx.prompt_config.as_ref(),
+    );
+    let mut history = vec![ChatMessage::system("")];
     history.extend(prior_turns);
     let use_streaming = target_channel
         .as_ref()
@@ -1626,21 +1635,53 @@ async fn process_channel_message(
     let cost_tracking_context = ctx.cost_tracking.clone().map(|state| {
         crate::agent::loop_::ToolLoopCostTrackingContext::new(state.tracker, state.prices)
     });
+    let excluded_tools = if msg.channel == "cli" || ctx.autonomy_level == AutonomyLevel::Full {
+        Vec::new()
+    } else {
+        ctx.non_cli_excluded_tools.as_ref().clone()
+    };
     let llm_call_start = Instant::now();
     #[allow(clippy::cast_possible_truncation)]
     let elapsed_before_llm_ms = started_at.elapsed().as_millis() as u64;
     tracing::info!(elapsed_before_llm_ms, "⏱ Starting LLM call");
     let llm_result = loop {
+        let native_tools = active_provider.supports_native_tools();
+        let prompt_renderer = || {
+            let base_prompt = render_runtime_system_prompt(
+                ctx.workspace_dir.as_ref(),
+                route.model.as_str(),
+                ctx.dynamic_tools.tool_descs.as_ref(),
+                &message_skills,
+                Some(&ctx.prompt_config.identity),
+                ctx.dynamic_tools.bootstrap_max_chars,
+                Some(&ctx.prompt_config.autonomy),
+                native_tools,
+                ctx.prompt_config.skills.prompt_injection_mode,
+                ctx.dynamic_tools.tool_descriptions.as_deref(),
+                Some(&session_toolbox),
+                ctx.tools_registry.as_ref(),
+                ctx.activated_tools.as_ref(),
+                &excluded_tools,
+                ctx.dynamic_tools.deferred_section.as_str(),
+            );
+            let mut prompt =
+                build_channel_system_prompt(&base_prompt, &msg.channel, &msg.reply_target);
+            if !memory_context.is_empty() {
+                let _ = write!(prompt, "\n\n{memory_context}");
+            }
+            prompt
+        };
         let loop_result = tokio::select! {
             () = cancellation_token.cancelled() => LlmExecutionResult::Cancelled,
             result = tokio::time::timeout(
                 Duration::from_secs(timeout_budget_secs),
                 crate::agent::loop_::TOOL_LOOP_COST_TRACKING_CONTEXT.scope(
                     cost_tracking_context.clone(),
-                run_tool_call_loop(
+                crate::agent::loop_::run_tool_call_loop_with_options(
                     active_provider.as_ref(),
                     &mut history,
                     ctx.tools_registry.as_ref(),
+                    Some(&session_toolbox),
                     notify_observer.as_ref() as &dyn Observer,
                     route.provider.as_str(),
                     route.model.as_str(),
@@ -1654,16 +1695,11 @@ async fn process_channel_message(
                     Some(cancellation_token.clone()),
                     delta_tx.clone(),
                     ctx.hooks.as_deref(),
-                    if msg.channel == "cli"
-                        || ctx.autonomy_level == AutonomyLevel::Full
-                    {
-                        &[]
-                    } else {
-                        ctx.non_cli_excluded_tools.as_ref()
-                    },
+                    &excluded_tools,
                     ctx.tool_call_dedup_exempt.as_ref(),
                     ctx.activated_tools.as_ref(),
                     Some(model_switch_callback.clone()),
+                    Some(&prompt_renderer),
                     &ctx.pacing,
                 ),
                 ),
@@ -3325,7 +3361,18 @@ pub async fn start_channels(config: Config) -> Result<()> {
         }
     }
 
-    let tools_registry = Arc::new(built_tools);
+    let shared_tools = built_tools
+        .into_iter()
+        .map(Arc::<dyn Tool>::from)
+        .collect::<Vec<_>>();
+    let tools_registry = Arc::new(
+        shared_tools
+            .iter()
+            .map(|tool| Box::new(crate::tools::ArcToolRef(Arc::clone(tool))) as Box<dyn Tool>)
+            .collect::<Vec<_>>(),
+    );
+    let manifest = load_runtime_agent_manifest(&workspace)?;
+    let toolbox_template = build_runtime_toolbox_template(&shared_tools, manifest.as_ref());
 
     let skills = crate::skills::load_skills_with_config(&workspace, &config);
 
@@ -3418,30 +3465,38 @@ pub async fn start_channels(config: Config) -> Result<()> {
     } else {
         None
     };
-    let native_tools = provider.supports_native_tools();
-    let mut system_prompt = build_system_prompt_with_mode_and_autonomy(
+    let tool_desc_catalog = Arc::new(
+        tool_descs
+            .iter()
+            .map(|(name, desc)| ((*name).to_string(), (*desc).to_string()))
+            .collect::<Vec<_>>(),
+    );
+    let bootstrap_toolbox = if config.autonomy.level == AutonomyLevel::Full {
+        toolbox_template.fork_session()
+    } else {
+        toolbox_template.fork_session_with_exclusions(&config.autonomy.non_cli_excluded_tools)
+    };
+    let system_prompt = render_runtime_system_prompt(
         &workspace,
         &model,
-        &tool_descs,
+        tool_desc_catalog.as_ref(),
         &skills,
         Some(&config.identity),
         bootstrap_max_chars,
         Some(&config.autonomy),
-        native_tools,
+        provider.supports_native_tools(),
         config.skills.prompt_injection_mode,
+        Some(&i18n_descs),
+        Some(&bootstrap_toolbox),
+        tools_registry.as_ref(),
+        ch_activated_handle.as_ref(),
+        if config.autonomy.level == AutonomyLevel::Full {
+            &[]
+        } else {
+            &config.autonomy.non_cli_excluded_tools
+        },
+        &deferred_section,
     );
-    if !native_tools {
-        system_prompt.push_str(&build_tool_instructions(
-            tools_registry.as_ref(),
-            Some(&i18n_descs),
-        ));
-    }
-
-    // Append deferred MCP tool names so the LLM knows what is available
-    if !deferred_section.is_empty() {
-        system_prompt.push('\n');
-        system_prompt.push_str(&deferred_section);
-    }
 
     if !skills.is_empty() {
         println!(
@@ -3571,6 +3626,13 @@ pub async fn start_channels(config: Config) -> Result<()> {
         tools_registry: Arc::clone(&tools_registry),
         observer,
         system_prompt: Arc::new(system_prompt),
+        dynamic_tools: DynamicToolRuntimeState {
+            toolbox_template,
+            tool_descs: Arc::clone(&tool_desc_catalog),
+            tool_descriptions: Some(Arc::new(i18n_descs.clone())),
+            deferred_section: Arc::new(deferred_section.clone()),
+            bootstrap_max_chars,
+        },
         model: Arc::new(model.clone()),
         temperature,
         auto_save_memory: config.memory.auto_save,
@@ -3952,6 +4014,7 @@ mod tests {
             tools_registry: Arc::new(vec![]),
             observer: Arc::new(NoopObserver),
             system_prompt: Arc::new("system".to_string()),
+            dynamic_tools: Default::default(),
             model: Arc::new("test-model".to_string()),
             temperature: 0.0,
             auto_save_memory: false,
@@ -4070,6 +4133,7 @@ mod tests {
             tools_registry: Arc::new(vec![]),
             observer: Arc::new(NoopObserver),
             system_prompt: Arc::new("system".to_string()),
+            dynamic_tools: Default::default(),
             model: Arc::new("test-model".to_string()),
             temperature: 0.0,
             auto_save_memory: false,
@@ -4144,6 +4208,7 @@ mod tests {
             tools_registry: Arc::new(vec![]),
             observer: Arc::new(NoopObserver),
             system_prompt: Arc::new("system".to_string()),
+            dynamic_tools: Default::default(),
             model: Arc::new("test-model".to_string()),
             temperature: 0.0,
             auto_save_memory: false,
@@ -4237,6 +4302,7 @@ mod tests {
             tools_registry: Arc::new(vec![]),
             observer: Arc::new(NoopObserver),
             system_prompt: Arc::new("system".to_string()),
+            dynamic_tools: Default::default(),
             model: Arc::new("test-model".to_string()),
             temperature: 0.0,
             auto_save_memory: false,
@@ -4780,6 +4846,7 @@ BTC is currently around $65,000 based on latest tool output."#
             tools_registry: Arc::new(vec![Box::new(MockPriceTool)]),
             observer: Arc::new(NoopObserver),
             system_prompt: Arc::new("test-system-prompt".to_string()),
+            dynamic_tools: Default::default(),
             model: Arc::new("test-model".to_string()),
             temperature: 0.0,
             auto_save_memory: false,
@@ -4863,6 +4930,7 @@ BTC is currently around $65,000 based on latest tool output."#
             tools_registry: Arc::new(vec![Box::new(MockPriceTool)]),
             observer: Arc::new(NoopObserver),
             system_prompt: Arc::new("test-system-prompt".to_string()),
+            dynamic_tools: Default::default(),
             model: Arc::new("test-model".to_string()),
             temperature: 0.0,
             auto_save_memory: false,
@@ -4960,6 +5028,7 @@ BTC is currently around $65,000 based on latest tool output."#
             tools_registry: Arc::new(vec![Box::new(MockPriceTool)]),
             observer: Arc::new(NoopObserver),
             system_prompt: Arc::new("test-system-prompt".to_string()),
+            dynamic_tools: Default::default(),
             model: Arc::new("test-model".to_string()),
             temperature: 0.0,
             auto_save_memory: false,
@@ -5042,6 +5111,7 @@ BTC is currently around $65,000 based on latest tool output."#
             tools_registry: Arc::new(vec![Box::new(MockPriceTool)]),
             observer: Arc::new(NoopObserver),
             system_prompt: Arc::new("test-system-prompt".to_string()),
+            dynamic_tools: Default::default(),
             model: Arc::new("test-model".to_string()),
             temperature: 0.0,
             auto_save_memory: false,
@@ -5134,6 +5204,7 @@ BTC is currently around $65,000 based on latest tool output."#
             tools_registry: Arc::new(vec![]),
             observer: Arc::new(NoopObserver),
             system_prompt: Arc::new("test-system-prompt".to_string()),
+            dynamic_tools: Default::default(),
             model: Arc::new("default-model".to_string()),
             temperature: 0.0,
             auto_save_memory: false,
@@ -5247,6 +5318,7 @@ BTC is currently around $65,000 based on latest tool output."#
             tools_registry: Arc::new(vec![]),
             observer: Arc::new(NoopObserver),
             system_prompt: Arc::new("test-system-prompt".to_string()),
+            dynamic_tools: Default::default(),
             model: Arc::new("default-model".to_string()),
             temperature: 0.0,
             auto_save_memory: false,
@@ -5341,6 +5413,7 @@ BTC is currently around $65,000 based on latest tool output."#
             tools_registry: Arc::new(vec![]),
             observer: Arc::new(NoopObserver),
             system_prompt: Arc::new("test-system-prompt".to_string()),
+            dynamic_tools: Default::default(),
             model: Arc::new("default-model".to_string()),
             temperature: 0.0,
             auto_save_memory: false,
@@ -5447,6 +5520,7 @@ BTC is currently around $65,000 based on latest tool output."#
             tools_registry: Arc::new(vec![]),
             observer: Arc::new(NoopObserver),
             system_prompt: Arc::new("test-system-prompt".to_string()),
+            dynamic_tools: Default::default(),
             model: Arc::new("startup-model".to_string()),
             temperature: 0.0,
             auto_save_memory: false,
@@ -5544,6 +5618,7 @@ BTC is currently around $65,000 based on latest tool output."#
             tools_registry: Arc::new(vec![Box::new(MockPriceTool)]),
             observer: Arc::new(NoopObserver),
             system_prompt: Arc::new("test-system-prompt".to_string()),
+            dynamic_tools: Default::default(),
             model: Arc::new("test-model".to_string()),
             temperature: 0.0,
             auto_save_memory: false,
@@ -5628,6 +5703,7 @@ BTC is currently around $65,000 based on latest tool output."#
             tools_registry: Arc::new(vec![Box::new(MockPriceTool)]),
             observer: Arc::new(NoopObserver),
             system_prompt: Arc::new("test-system-prompt".to_string()),
+            dynamic_tools: Default::default(),
             model: Arc::new("test-model".to_string()),
             temperature: 0.0,
             auto_save_memory: false,
@@ -5827,6 +5903,7 @@ BTC is currently around $65,000 based on latest tool output."#
             tools_registry: Arc::new(vec![]),
             observer: Arc::new(NoopObserver),
             system_prompt: Arc::new("test-system-prompt".to_string()),
+            dynamic_tools: Default::default(),
             model: Arc::new("test-model".to_string()),
             temperature: 0.0,
             auto_save_memory: false,
@@ -5931,6 +6008,7 @@ BTC is currently around $65,000 based on latest tool output."#
             tools_registry: Arc::new(vec![]),
             observer: Arc::new(NoopObserver),
             system_prompt: Arc::new("test-system-prompt".to_string()),
+            dynamic_tools: Default::default(),
             model: Arc::new("test-model".to_string()),
             temperature: 0.0,
             auto_save_memory: false,
@@ -6050,6 +6128,7 @@ BTC is currently around $65,000 based on latest tool output."#
             tools_registry: Arc::new(vec![]),
             observer: Arc::new(NoopObserver),
             system_prompt: Arc::new("test-system-prompt".to_string()),
+            dynamic_tools: Default::default(),
             model: Arc::new("test-model".to_string()),
             temperature: 0.0,
             auto_save_memory: false,
@@ -6166,6 +6245,7 @@ BTC is currently around $65,000 based on latest tool output."#
             tools_registry: Arc::new(vec![]),
             observer: Arc::new(NoopObserver),
             system_prompt: Arc::new("test-system-prompt".to_string()),
+            dynamic_tools: Default::default(),
             model: Arc::new("test-model".to_string()),
             temperature: 0.0,
             auto_save_memory: false,
@@ -6264,6 +6344,7 @@ BTC is currently around $65,000 based on latest tool output."#
             tools_registry: Arc::new(vec![]),
             observer: Arc::new(NoopObserver),
             system_prompt: Arc::new("test-system-prompt".to_string()),
+            dynamic_tools: Default::default(),
             model: Arc::new("test-model".to_string()),
             temperature: 0.0,
             auto_save_memory: false,
@@ -6346,6 +6427,7 @@ BTC is currently around $65,000 based on latest tool output."#
             tools_registry: Arc::new(vec![]),
             observer: Arc::new(NoopObserver),
             system_prompt: Arc::new("test-system-prompt".to_string()),
+            dynamic_tools: Default::default(),
             model: Arc::new("test-model".to_string()),
             temperature: 0.0,
             auto_save_memory: false,
@@ -7114,6 +7196,7 @@ BTC is currently around $65,000 based on latest tool output."#
             tools_registry: Arc::new(vec![]),
             observer: Arc::new(NoopObserver),
             system_prompt: Arc::new("test-system-prompt".to_string()),
+            dynamic_tools: Default::default(),
             model: Arc::new("test-model".to_string()),
             temperature: 0.0,
             auto_save_memory: false,
@@ -7247,6 +7330,7 @@ BTC is currently around $65,000 based on latest tool output."#
             tools_registry: Arc::new(vec![]),
             observer: Arc::new(NoopObserver),
             system_prompt: Arc::new(initial_system_prompt),
+            dynamic_tools: Default::default(),
             model: Arc::new("test-model".to_string()),
             temperature: 0.0,
             auto_save_memory: false,
@@ -7420,6 +7504,7 @@ BTC is currently around $65,000 based on latest tool output."#
             tools_registry: Arc::new(vec![]),
             observer: Arc::new(NoopObserver),
             system_prompt: Arc::new("test-system-prompt".to_string()),
+            dynamic_tools: Default::default(),
             model: Arc::new("test-model".to_string()),
             temperature: 0.0,
             auto_save_memory: false,
@@ -7530,6 +7615,7 @@ BTC is currently around $65,000 based on latest tool output."#
             tools_registry: Arc::new(vec![]),
             observer: Arc::new(NoopObserver),
             system_prompt: Arc::new("test-system-prompt".to_string()),
+            dynamic_tools: Default::default(),
             model: Arc::new("test-model".to_string()),
             temperature: 0.0,
             auto_save_memory: false,
@@ -8068,6 +8154,7 @@ Mon Feb 20
             tools_registry: Arc::new(vec![]),
             observer: Arc::new(NoopObserver),
             system_prompt: Arc::new("You are a helpful assistant.".to_string()),
+            dynamic_tools: Default::default(),
             model: Arc::new("test-model".to_string()),
             temperature: 0.0,
             auto_save_memory: false,
@@ -8157,6 +8244,7 @@ Mon Feb 20
             tools_registry: Arc::new(vec![]),
             observer: Arc::new(NoopObserver),
             system_prompt: Arc::new("You are a helpful assistant.".to_string()),
+            dynamic_tools: Default::default(),
             model: Arc::new("test-model".to_string()),
             temperature: 0.0,
             auto_save_memory: false,
@@ -8321,6 +8409,7 @@ Mon Feb 20
             tools_registry: Arc::new(vec![]),
             observer: Arc::new(NoopObserver),
             system_prompt: Arc::new("test-system-prompt".to_string()),
+            dynamic_tools: Default::default(),
             model: Arc::new("default-model".to_string()),
             temperature: 0.0,
             auto_save_memory: false,
@@ -8434,6 +8523,7 @@ Mon Feb 20
             tools_registry: Arc::new(vec![]),
             observer: Arc::new(NoopObserver),
             system_prompt: Arc::new("test-system-prompt".to_string()),
+            dynamic_tools: Default::default(),
             model: Arc::new("default-model".to_string()),
             temperature: 0.0,
             auto_save_memory: false,
@@ -8539,6 +8629,7 @@ Mon Feb 20
             tools_registry: Arc::new(vec![]),
             observer: Arc::new(NoopObserver),
             system_prompt: Arc::new("test-system-prompt".to_string()),
+            dynamic_tools: Default::default(),
             model: Arc::new("default-model".to_string()),
             temperature: 0.0,
             auto_save_memory: false,
@@ -8664,6 +8755,7 @@ Mon Feb 20
             tools_registry: Arc::new(vec![]),
             observer: Arc::new(NoopObserver),
             system_prompt: Arc::new("test-system-prompt".to_string()),
+            dynamic_tools: Default::default(),
             model: Arc::new("default-model".to_string()),
             temperature: 0.0,
             auto_save_memory: false,
@@ -8927,6 +9019,7 @@ Mon Feb 20
             tools_registry: Arc::new(vec![]),
             observer: Arc::new(NoopObserver),
             system_prompt: Arc::new("test-system-prompt".to_string()),
+            dynamic_tools: Default::default(),
             model: Arc::new("test-model".to_string()),
             temperature: 0.0,
             auto_save_memory: false,

@@ -35,6 +35,10 @@ pub struct ToolScope {
     #[serde(default)]
     pub deny: Vec<String>,
     #[serde(default)]
+    pub core_tools: Vec<String>,
+    #[serde(default)]
+    pub discoverable_tools: Vec<String>,
+    #[serde(default)]
     pub session_scope: SessionScope,
 }
 

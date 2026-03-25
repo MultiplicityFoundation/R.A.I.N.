@@ -7,7 +7,7 @@ use crate::agent::runtime_support::scrub_credentials;
 use crate::agent::tool_call_parser::ParsedToolCall;
 use crate::approval::ApprovalManager;
 use crate::observability::{Observer, ObserverEvent};
-use crate::tools::Tool;
+use crate::tools::{Tool, ToolboxManager};
 use crate::util::truncate_with_ellipsis;
 use anyhow::Result;
 use std::time::{Duration, Instant};
@@ -128,6 +128,7 @@ pub(crate) async fn execute_one_tool(
     call_name: &str,
     call_arguments: serde_json::Value,
     tools_registry: &[Box<dyn Tool>],
+    toolbox_manager: Option<&ToolboxManager>,
     activated_tools: Option<&std::sync::Arc<std::sync::Mutex<crate::tools::ActivatedToolSet>>>,
     observer: &dyn Observer,
     cancellation_token: Option<&CancellationToken>,
@@ -139,7 +140,10 @@ pub(crate) async fn execute_one_tool(
     });
     let start = Instant::now();
 
-    let static_tool = find_tool(tools_registry, call_name);
+    let managed_tool = toolbox_manager.and_then(|manager| manager.active_tool(call_name));
+    let static_tool = managed_tool
+        .as_deref()
+        .or_else(|| find_tool(tools_registry, call_name));
     let activated_arc = if static_tool.is_none() {
         activated_tools.and_then(|at| {
             at.lock()
@@ -231,7 +235,10 @@ pub(crate) fn should_execute_tools_in_parallel(
     // Running tool_search in parallel with the tools it activates causes a
     // race condition where the tool lookup happens before activation completes.
     // Force sequential execution whenever tool_search is in the batch.
-    if tool_calls.iter().any(|call| call.name == "tool_search") {
+    if tool_calls
+        .iter()
+        .any(|call| matches!(call.name.as_str(), "tool_search" | "tool_discovery"))
+    {
         return false;
     }
 
@@ -250,6 +257,7 @@ pub(crate) fn should_execute_tools_in_parallel(
 pub(crate) async fn execute_tools_parallel(
     tool_calls: &[ParsedToolCall],
     tools_registry: &[Box<dyn Tool>],
+    toolbox_manager: Option<&ToolboxManager>,
     activated_tools: Option<&std::sync::Arc<std::sync::Mutex<crate::tools::ActivatedToolSet>>>,
     observer: &dyn Observer,
     cancellation_token: Option<&CancellationToken>,
@@ -261,6 +269,7 @@ pub(crate) async fn execute_tools_parallel(
                 &call.name,
                 call.arguments.clone(),
                 tools_registry,
+                toolbox_manager,
                 activated_tools,
                 observer,
                 cancellation_token,
@@ -276,6 +285,7 @@ pub(crate) async fn execute_tools_parallel(
 pub(crate) async fn execute_tools_sequential(
     tool_calls: &[ParsedToolCall],
     tools_registry: &[Box<dyn Tool>],
+    toolbox_manager: Option<&ToolboxManager>,
     activated_tools: Option<&std::sync::Arc<std::sync::Mutex<crate::tools::ActivatedToolSet>>>,
     observer: &dyn Observer,
     cancellation_token: Option<&CancellationToken>,
@@ -288,6 +298,7 @@ pub(crate) async fn execute_tools_sequential(
                 &call.name,
                 call.arguments.clone(),
                 tools_registry,
+                toolbox_manager,
                 activated_tools,
                 observer,
                 cancellation_token,
@@ -368,8 +379,16 @@ mod tests {
             .expect("should produce a sample whose byte index 300 is not a char boundary");
 
         let observer = NoopObserver;
-        let result =
-            execute_one_tool("unknown_tool", call_arguments, &[], None, &observer, None).await;
+        let result = execute_one_tool(
+            "unknown_tool",
+            call_arguments,
+            &[],
+            None,
+            None,
+            &observer,
+            None,
+        )
+        .await;
         assert!(result.is_ok(), "execute_one_tool should not panic or error");
 
         let outcome = result.unwrap();
@@ -395,6 +414,7 @@ mod tests {
             "extract_text",
             serde_json::json!({ "value": "ok" }),
             &[],
+            None,
             Some(&activated),
             &observer,
             None,
