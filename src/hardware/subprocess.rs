@@ -348,6 +348,52 @@ mod tests {
         }
     }
 
+    #[cfg(not(target_os = "windows"))]
+    fn script_path(dir: &tempfile::TempDir) -> PathBuf {
+        dir.path().join("tool.sh")
+    }
+
+    #[cfg(target_os = "windows")]
+    fn script_path(dir: &tempfile::TempDir) -> PathBuf {
+        dir.path().join("tool.cmd")
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn write_echo_script(path: &std::path::Path, result_json: &str) {
+        std::fs::write(
+            path,
+            format!("#!/bin/sh\ncat > /dev/null\necho '{}'\n", result_json),
+        )
+        .unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    #[cfg(target_os = "windows")]
+    fn write_echo_script(path: &std::path::Path, result_json: &str) {
+        std::fs::write(
+            path,
+            format!("@echo off\r\nset /p unused=\r\necho {result_json}\r\n"),
+        )
+        .unwrap();
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn write_sleep_script(path: &std::path::Path) {
+        std::fs::write(path, "#!/bin/sh\nsleep 60\n").unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    #[cfg(target_os = "windows")]
+    fn write_sleep_script(path: &std::path::Path) {
+        std::fs::write(
+            path,
+            "@echo off\r\npowershell.exe -NoLogo -NoProfile -NonInteractive -Command \"Start-Sleep -Seconds 60\"\r\n",
+        )
+        .unwrap();
+    }
+
     #[test]
     fn name_and_description_come_from_manifest() {
         let m = make_manifest("gpio_test", vec![]);
@@ -406,17 +452,8 @@ mod tests {
         // Override binary to `sh` and pass `-c` + script via a wrapper.
         // Simpler: write a temp script.
         let dir = tempfile::tempdir().unwrap();
-        let script_path = dir.path().join("tool.sh");
-        std::fs::write(
-            &script_path,
-            format!("#!/bin/sh\ncat > /dev/null\necho '{}'\n", result_json),
-        )
-        .unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&script_path, std::fs::Permissions::from_mode(0o755)).unwrap();
-        }
+        let script_path = script_path(&dir);
+        write_echo_script(&script_path, result_json);
 
         let tool = SubprocessTool::new(m, script_path.clone());
         let result = tool
@@ -439,14 +476,8 @@ mod tests {
         // Script sleeps forever — SubprocessTool should kill it and return a
         // "timed out" error once SUBPROCESS_TIMEOUT_SECS elapses.
         let dir = tempfile::tempdir().unwrap();
-        let script_path = dir.path().join("tool.sh");
-        std::fs::write(&script_path, "#!/bin/sh\nsleep 60\n").unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&script_path, std::fs::Permissions::from_mode(0o755)).unwrap();
-        }
-
+        let script_path = script_path(&dir);
+        write_sleep_script(&script_path);
         let m = make_manifest("sleep_tool", vec![]);
         let tool = SubprocessTool::new(m, script_path);
         let result = tool

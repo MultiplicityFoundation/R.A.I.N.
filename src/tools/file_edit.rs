@@ -238,6 +238,24 @@ mod tests {
     use super::*;
     use crate::security::{AutonomyLevel, SecurityPolicy};
 
+    fn rootless_path(path: &std::path::Path) -> std::path::PathBuf {
+        let mut relative = std::path::PathBuf::new();
+
+        for component in path.components() {
+            match component {
+                std::path::Component::Prefix(_)
+                | std::path::Component::RootDir
+                | std::path::Component::CurDir => {}
+                std::path::Component::ParentDir => {
+                    panic!("workspace path should not contain parent directory components")
+                }
+                std::path::Component::Normal(part) => relative.push(part),
+            }
+        }
+
+        relative
+    }
+
     fn test_security(workspace: std::path::PathBuf) -> Arc<SecurityPolicy> {
         Arc::new(SecurityPolicy {
             autonomy: AutonomyLevel::Supervised,
@@ -519,10 +537,7 @@ mod tests {
             .unwrap();
 
         let tool = FileEditTool::new(test_security(workspace.clone()));
-        let workspace_prefixed = workspace
-            .strip_prefix(std::path::Path::new("/"))
-            .unwrap()
-            .join("nested/target.txt");
+        let workspace_prefixed = rootless_path(&workspace).join("nested/target.txt");
         let result = tool
             .execute(json!({
                 "path": workspace_prefixed.to_string_lossy(),

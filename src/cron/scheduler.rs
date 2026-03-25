@@ -10,6 +10,7 @@ use crate::cron::{
     reschedule_after_run, update_job, CronJob, CronJobPatch, DeliveryConfig, JobType, Schedule,
     SessionTarget,
 };
+use crate::runtime::RuntimeAdapter;
 use crate::security::SecurityPolicy;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
@@ -591,11 +592,9 @@ async fn run_job_command_with_timeout(
 
 /// Build a shell `Command` for cron job execution.
 ///
-/// Uses `sh -c <command>` (non-login shell). On Windows, R.A.I.N. users
-/// typically have Git Bash installed which provides `sh` in PATH, and
-/// cron commands are written with Unix shell syntax. The previous `-lc`
-/// (login shell) flag was dropped: login shells load the full user
-/// profile on every invocation which is slow and may cause side effects.
+/// Delegates to the native runtime shell builder so shell jobs and the
+/// interactive shell tool share the same platform-specific semantics.
+/// This currently means `sh -c <command>` on Unix and PowerShell on Windows.
 ///
 /// The command is configured with:
 /// - `current_dir` set to the workspace
@@ -606,10 +605,9 @@ fn build_cron_shell_command(
     command: &str,
     workspace_dir: &std::path::Path,
 ) -> anyhow::Result<Command> {
-    let mut cmd = Command::new("sh");
-    cmd.arg("-c")
-        .arg(command)
-        .current_dir(workspace_dir)
+    let mut cmd =
+        crate::runtime::NativeRuntime::new().build_shell_command(command, workspace_dir)?;
+    cmd.current_dir(workspace_dir)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -625,6 +623,8 @@ mod tests {
     use crate::cron::{self, DeliveryConfig};
     use crate::security::SecurityPolicy;
     use chrono::{Duration as ChronoDuration, Utc};
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
     use tempfile::TempDir;
 
     async fn test_config(tmp: &TempDir) -> Config {
@@ -669,6 +669,55 @@ mod tests {
         format!("{prefix}-{}", uuid::Uuid::new_v4())
     }
 
+    #[cfg(not(target_os = "windows"))]
+    fn retry_script_name() -> &'static str {
+        "retry-once.sh"
+    }
+
+    #[cfg(target_os = "windows")]
+    fn retry_script_name() -> &'static str {
+        "retry-once.cmd"
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    async fn write_retry_once_script(path: &std::path::Path) {
+        tokio::fs::write(
+            path,
+            "#!/bin/sh\nif [ -f retry-ok.flag ]; then\n  echo recovered\n  exit 0\nfi\ntouch retry-ok.flag\nexit 1\n",
+        )
+        .await
+        .unwrap();
+        let mut perms = tokio::fs::metadata(path).await.unwrap().permissions();
+        perms.set_mode(0o755);
+        tokio::fs::set_permissions(path, perms).await.unwrap();
+    }
+
+    #[cfg(target_os = "windows")]
+    async fn write_retry_once_script(path: &std::path::Path) {
+        tokio::fs::write(
+            path,
+            "@echo off\r\nif exist retry-ok.flag (\r\n  echo recovered\r\n  exit /b 0\r\n)\r\ntype nul > retry-ok.flag\r\nexit /b 1\r\n",
+        )
+        .await
+        .unwrap();
+    }
+
+    fn output_contains_exit_status(output: &str, code: i32) -> bool {
+        #[cfg(not(target_os = "windows"))]
+        {
+            output.contains(&format!("status=exit status: {code}"))
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            output.contains(&format!("status=exit code: {code}"))
+        }
+    }
+
+    fn output_contains_status_prefix(output: &str) -> bool {
+        output.contains("status=exit status:") || output.contains("status=exit code:")
+    }
+
     #[tokio::test]
     async fn run_job_command_success() {
         let tmp = TempDir::new().unwrap();
@@ -679,7 +728,7 @@ mod tests {
         let (success, output) = run_job_command(&config, &security, &job).await;
         assert!(success);
         assert!(output.contains("scheduler-ok"));
-        assert!(output.contains("status=exit status: 0"));
+        assert!(output_contains_exit_status(&output, 0));
     }
 
     #[tokio::test]
@@ -692,7 +741,7 @@ mod tests {
         let (success, output) = run_job_command(&config, &security, &job).await;
         assert!(!success);
         assert!(output.contains("definitely_missing_file_for_scheduler_test"));
-        assert!(output.contains("status=exit status:"));
+        assert!(output_contains_status_prefix(&output));
     }
 
     #[tokio::test]
@@ -831,16 +880,12 @@ mod tests {
         let mut config = test_config(&tmp).await;
         config.reliability.scheduler_retries = 1;
         config.reliability.provider_backoff_ms = 1;
-        config.autonomy.allowed_commands = vec!["sh".into()];
+        let retry_script = retry_script_name();
+        config.autonomy.allowed_commands = vec![format!("./{retry_script}")];
         let security = SecurityPolicy::from_config(&config.autonomy, &config.workspace_dir);
 
-        tokio::fs::write(
-            config.workspace_dir.join("retry-once.sh"),
-            "#!/bin/sh\nif [ -f retry-ok.flag ]; then\n  echo recovered\n  exit 0\nfi\ntouch retry-ok.flag\nexit 1\n",
-        )
-        .await
-        .unwrap();
-        let job = test_job("sh ./retry-once.sh");
+        write_retry_once_script(&config.workspace_dir.join(retry_script)).await;
+        let job = test_job(&format!("./{retry_script}"));
 
         let (success, output) = Box::pin(execute_job_with_retry(&config, &security, &job)).await;
         assert!(success);
@@ -1237,18 +1282,40 @@ mod tests {
     }
 
     #[test]
-    fn build_cron_shell_command_uses_sh_non_login() {
+    fn build_cron_shell_command_uses_platform_shell_non_login() {
         let workspace = std::env::temp_dir();
         let cmd = build_cron_shell_command("echo cron-test", &workspace).unwrap();
         let debug = format!("{cmd:?}");
         assert!(debug.contains("echo cron-test"));
+        #[cfg(not(target_os = "windows"))]
         assert!(debug.contains("\"sh\""), "should use sh: {debug}");
         // Must NOT use login shell (-l) — login shells load full profile
         // and are slow/unpredictable for cron jobs.
+        #[cfg(not(target_os = "windows"))]
         assert!(
             !debug.contains("\"-lc\""),
             "must not use login shell: {debug}"
         );
+        #[cfg(target_os = "windows")]
+        {
+            let debug_lower = debug.to_ascii_lowercase();
+            assert!(
+                debug_lower.contains("powershell.exe"),
+                "should use powershell: {debug}"
+            );
+            assert!(
+                debug.contains("-NoProfile"),
+                "should suppress profiles: {debug}"
+            );
+            assert!(
+                debug.contains("-NonInteractive"),
+                "should be non-interactive: {debug}"
+            );
+            assert!(
+                debug.contains("-Command"),
+                "should pass command text: {debug}"
+            );
+        }
     }
 
     #[tokio::test]

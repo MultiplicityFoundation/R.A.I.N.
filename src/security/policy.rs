@@ -174,6 +174,20 @@ fn default_forbidden_paths() -> Vec<String> {
 #[cfg(target_os = "windows")]
 fn default_forbidden_paths() -> Vec<String> {
     vec![
+        "/etc".into(),
+        "/root".into(),
+        "/home".into(),
+        "/usr".into(),
+        "/bin".into(),
+        "/sbin".into(),
+        "/lib".into(),
+        "/opt".into(),
+        "/boot".into(),
+        "/dev".into(),
+        "/proc".into(),
+        "/sys".into(),
+        "/var".into(),
+        "/tmp".into(),
         "C:\\Windows".into(),
         "C:\\Windows\\System32".into(),
         "C:\\Program Files".into(),
@@ -212,8 +226,8 @@ fn home_dir() -> Option<PathBuf> {
     }
     #[cfg(target_os = "windows")]
     {
-        std::env::var_os("USERPROFILE")
-            .or_else(|| std::env::var_os("HOME"))
+        std::env::var_os("HOME")
+            .or_else(|| std::env::var_os("USERPROFILE"))
             .map(PathBuf::from)
     }
 }
@@ -232,6 +246,72 @@ fn expand_user_path(path: &str) -> PathBuf {
     }
 
     PathBuf::from(path)
+}
+
+fn is_windows_drive_path(candidate: &str) -> bool {
+    let bytes = candidate.as_bytes();
+    bytes.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && matches!(bytes[2], b'\\' | b'/')
+}
+
+fn is_unc_path(candidate: &str) -> bool {
+    candidate.starts_with("\\\\") || candidate.starts_with("//")
+}
+
+fn is_effectively_absolute_path(candidate: &str) -> bool {
+    let trimmed = candidate.trim();
+    !trimmed.is_empty()
+        && (Path::new(trimmed).is_absolute()
+            || trimmed.starts_with('/')
+            || trimmed.starts_with('\\')
+            || is_windows_drive_path(trimmed)
+            || is_unc_path(trimmed))
+}
+
+fn contains_parent_dir_component(candidate: &str) -> bool {
+    candidate
+        .split(['/', '\\'])
+        .any(|component| component == "..")
+}
+
+fn normalize_policy_path_string(candidate: &str) -> String {
+    let mut normalized = candidate.replace('\\', "/");
+
+    if cfg!(target_os = "windows") {
+        normalized = normalized.to_ascii_lowercase();
+    }
+
+    while normalized.len() > 1 && normalized.ends_with('/') && !is_windows_drive_path(&normalized) {
+        normalized.pop();
+    }
+
+    normalized
+}
+
+fn normalize_policy_path(path: &Path) -> String {
+    normalize_policy_path_string(&path.to_string_lossy())
+}
+
+fn policy_path_has_prefix(candidate: &str, prefix: &str) -> bool {
+    if prefix.is_empty() {
+        return false;
+    }
+
+    if candidate == prefix {
+        return true;
+    }
+
+    if prefix == "/" || prefix.ends_with('/') {
+        return candidate.starts_with(prefix);
+    }
+
+    candidate.starts_with(prefix)
+        && candidate
+            .as_bytes()
+            .get(prefix.len())
+            .is_some_and(|byte| *byte == b'/')
 }
 
 fn rootless_path(path: &Path) -> Option<PathBuf> {
@@ -568,19 +648,14 @@ fn strip_wrapping_quotes(token: &str) -> &str {
 }
 
 fn looks_like_path(candidate: &str) -> bool {
-    candidate.starts_with('/')
+    is_effectively_absolute_path(candidate)
         || candidate.starts_with("./")
         || candidate.starts_with("../")
         || candidate.starts_with('~')
         || candidate == "."
         || candidate == ".."
         || candidate.contains('/')
-        // Windows path patterns: drive letters (C:\, D:\) and UNC paths (\\server\share)
-        || (cfg!(target_os = "windows")
-            && (candidate
-                .get(1..3)
-                .is_some_and(|s| s == ":\\" || s == ":/")
-                || candidate.starts_with("\\\\")))
+        || candidate.contains('\\')
 }
 
 fn attached_short_option_value(token: &str) -> Option<&str> {
@@ -1095,16 +1170,18 @@ impl SecurityPolicy {
         }
 
         // Block path traversal: check for ".." as a path component
-        if Path::new(path)
-            .components()
-            .any(|c| matches!(c, std::path::Component::ParentDir))
-        {
+        if contains_parent_dir_component(path) {
             return false;
         }
 
-        // Block URL-encoded traversal attempts (e.g. ..%2f)
+        // Block URL-encoded traversal attempts (e.g. ..%2f, ..%5c, %2e%2e)
         let lower = path.to_lowercase();
-        if lower.contains("..%2f") || lower.contains("%2f..") {
+        if lower.contains("..%2f")
+            || lower.contains("%2f..")
+            || lower.contains("..%5c")
+            || lower.contains("%5c..")
+            || lower.contains("%2e%2e")
+        {
             return false;
         }
 
@@ -1116,6 +1193,8 @@ impl SecurityPolicy {
 
         // Expand "~" for consistent matching with forbidden paths and allowlists.
         let expanded_path = expand_user_path(path);
+        let normalized_expanded = normalize_policy_path(&expanded_path);
+        let normalized_workspace = normalize_policy_path(&self.workspace_dir);
 
         // When workspace_only is set and the path is absolute, only allow it
         // if it falls within the workspace directory or an explicit allowed
@@ -1123,12 +1202,14 @@ impl SecurityPolicy {
         // prefix list so that workspace paths under broad defaults like
         // "/home" are not rejected.  This mirrors the priority order in
         // `is_resolved_path_allowed`.  See #2880.
-        if expanded_path.is_absolute() {
-            let in_workspace = expanded_path.starts_with(&self.workspace_dir);
+        if is_effectively_absolute_path(path) || is_effectively_absolute_path(&normalized_expanded)
+        {
+            let in_workspace = policy_path_has_prefix(&normalized_expanded, &normalized_workspace);
             let in_allowed_root = self
                 .allowed_roots
                 .iter()
-                .any(|root| expanded_path.starts_with(root));
+                .map(|root| normalize_policy_path(root))
+                .any(|root| policy_path_has_prefix(&normalized_expanded, &root));
 
             if in_workspace || in_allowed_root {
                 return true;
@@ -1143,8 +1224,8 @@ impl SecurityPolicy {
 
         // Block forbidden paths using path-component-aware matching
         for forbidden in &self.forbidden_paths {
-            let forbidden_path = expand_user_path(forbidden);
-            if expanded_path.starts_with(forbidden_path) {
+            let forbidden_path = normalize_policy_path(&expand_user_path(forbidden));
+            if policy_path_has_prefix(&normalized_expanded, &forbidden_path) {
                 return false;
             }
         }
@@ -1161,7 +1242,9 @@ impl SecurityPolicy {
             .workspace_dir
             .canonicalize()
             .unwrap_or_else(|_| self.workspace_dir.clone());
-        if resolved.starts_with(&workspace_root) {
+        let normalized_resolved = normalize_policy_path(resolved);
+        let normalized_workspace = normalize_policy_path(&workspace_root);
+        if policy_path_has_prefix(&normalized_resolved, &normalized_workspace) {
             return true;
         }
 
@@ -1170,7 +1253,8 @@ impl SecurityPolicy {
         // default forbidden roots such as `/home` and `/tmp`.
         for root in &self.allowed_roots {
             let canonical = root.canonicalize().unwrap_or_else(|_| root.clone());
-            if resolved.starts_with(&canonical) {
+            let normalized_root = normalize_policy_path(&canonical);
+            if policy_path_has_prefix(&normalized_resolved, &normalized_root) {
                 return true;
             }
         }
@@ -1178,8 +1262,8 @@ impl SecurityPolicy {
         // For paths outside workspace/allowlist, block forbidden roots to
         // prevent symlink escapes and sensitive directory access.
         for forbidden in &self.forbidden_paths {
-            let forbidden_path = expand_user_path(forbidden);
-            if resolved.starts_with(&forbidden_path) {
+            let forbidden_path = normalize_policy_path(&expand_user_path(forbidden));
+            if policy_path_has_prefix(&normalized_resolved, &forbidden_path) {
                 return false;
             }
         }
@@ -1294,6 +1378,12 @@ impl SecurityPolicy {
         self.tracker.count() >= self.max_actions_per_hour as usize
     }
 
+    /// Return whether a path should be treated as absolute by the security
+    /// policy, including Unix-rooted and Windows-specific forms.
+    pub fn path_looks_absolute(path: &str) -> bool {
+        is_effectively_absolute_path(path)
+    }
+
     /// Resolve a user-provided path for tool use.
     ///
     /// Expands `~` prefixes and resolves relative paths against the workspace
@@ -1301,7 +1391,9 @@ impl SecurityPolicy {
     /// the filesystem path that the tool actually operates on.
     pub fn resolve_tool_path(&self, path: &str) -> PathBuf {
         let expanded = expand_user_path(path);
-        if expanded.is_absolute() {
+        if is_effectively_absolute_path(path)
+            || is_effectively_absolute_path(&expanded.to_string_lossy())
+        {
             expanded
         } else if let Some(workspace_hint) = rootless_path(&self.workspace_dir) {
             if let Ok(stripped) = expanded.strip_prefix(&workspace_hint) {
@@ -1324,12 +1416,18 @@ impl SecurityPolicy {
     /// to allow absolute paths that are explicitly permitted by policy.
     pub fn is_under_allowed_root(&self, path: &str) -> bool {
         let expanded = expand_user_path(path);
-        if !expanded.is_absolute() {
+        if !is_effectively_absolute_path(path)
+            && !is_effectively_absolute_path(&expanded.to_string_lossy())
+        {
             return false;
         }
+        let normalized_expanded = normalize_policy_path(&expanded);
         self.allowed_roots.iter().any(|root| {
             let canonical = root.canonicalize().unwrap_or_else(|_| root.clone());
-            expanded.starts_with(&canonical) || expanded.starts_with(root)
+            let normalized_canonical = normalize_policy_path(&canonical);
+            let normalized_root = normalize_policy_path(root);
+            policy_path_has_prefix(&normalized_expanded, &normalized_canonical)
+                || policy_path_has_prefix(&normalized_expanded, &normalized_root)
         })
     }
 
@@ -1349,7 +1447,9 @@ impl SecurityPolicy {
                 .iter()
                 .map(|root| {
                     let expanded = expand_user_path(root);
-                    if expanded.is_absolute() {
+                    if is_effectively_absolute_path(root)
+                        || is_effectively_absolute_path(&expanded.to_string_lossy())
+                    {
                         expanded
                     } else {
                         workspace_dir.join(expanded)
@@ -1965,11 +2065,9 @@ mod tests {
         let workspace = PathBuf::from("/tmp/test-workspace");
         let policy = SecurityPolicy::from_config(&autonomy_config, &workspace);
 
-        let expected_home_root = if let Some(home) = std::env::var_os("HOME") {
-            PathBuf::from(home).join("Desktop")
-        } else {
-            PathBuf::from("~/Desktop")
-        };
+        let expected_home_root = home_dir()
+            .map(|home| home.join("Desktop"))
+            .unwrap_or_else(|| PathBuf::from("~/Desktop"));
 
         assert_eq!(policy.allowed_roots[0], expected_home_root);
         assert_eq!(policy.allowed_roots[1], workspace.join("shared-data"));

@@ -260,6 +260,7 @@ mod tests {
     use super::*;
     use crate::runtime::{NativeRuntime, RuntimeAdapter};
     use crate::security::{AutonomyLevel, SecurityPolicy};
+    use std::path::Path;
 
     fn test_security(autonomy: AutonomyLevel) -> Arc<SecurityPolicy> {
         Arc::new(SecurityPolicy {
@@ -271,6 +272,68 @@ mod tests {
 
     fn test_runtime() -> Arc<dyn RuntimeAdapter> {
         Arc::new(NativeRuntime::new())
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn env_listing_command() -> &'static str {
+        "env"
+    }
+
+    #[cfg(target_os = "windows")]
+    fn env_listing_command() -> &'static str {
+        "Get-ChildItem Env:"
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn env_listing_allowed_commands() -> Vec<String> {
+        vec!["env".into(), "echo".into()]
+    }
+
+    #[cfg(target_os = "windows")]
+    fn env_listing_allowed_commands() -> Vec<String> {
+        vec!["get-childitem".into(), "echo".into()]
+    }
+
+    fn output_contains_env_key(output: &str, key: &str) -> bool {
+        output.lines().any(|line| {
+            line.contains(key) && (line.contains('=') || line.split_whitespace().count() >= 2)
+        })
+    }
+
+    fn output_contains_env_entry(output: &str, key: &str, value: &str) -> bool {
+        output
+            .lines()
+            .any(|line| line.contains(key) && line.contains(value))
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn medium_risk_create_command(target: &str) -> String {
+        format!("touch {target}")
+    }
+
+    #[cfg(target_os = "windows")]
+    fn medium_risk_create_command(target: &str) -> String {
+        format!("mkdir {target}")
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn medium_risk_allowed_commands() -> Vec<String> {
+        vec!["touch".into()]
+    }
+
+    #[cfg(target_os = "windows")]
+    fn medium_risk_allowed_commands() -> Vec<String> {
+        vec!["mkdir".into()]
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    async fn cleanup_medium_risk_target(path: &Path) {
+        let _ = tokio::fs::remove_file(path).await;
+    }
+
+    #[cfg(target_os = "windows")]
+    async fn cleanup_medium_risk_target(path: &Path) {
+        let _ = tokio::fs::remove_dir_all(path).await;
     }
 
     #[test]
@@ -440,7 +503,7 @@ mod tests {
         Arc::new(SecurityPolicy {
             autonomy: AutonomyLevel::Supervised,
             workspace_dir: std::env::temp_dir(),
-            allowed_commands: vec!["env".into(), "echo".into()],
+            allowed_commands: env_listing_allowed_commands(),
             ..SecurityPolicy::default()
         })
     }
@@ -449,7 +512,7 @@ mod tests {
         Arc::new(SecurityPolicy {
             autonomy: AutonomyLevel::Supervised,
             workspace_dir: std::env::temp_dir(),
-            allowed_commands: vec!["env".into()],
+            allowed_commands: env_listing_allowed_commands(),
             shell_env_passthrough: vars.iter().map(|v| (*v).to_string()).collect(),
             ..SecurityPolicy::default()
         })
@@ -486,7 +549,7 @@ mod tests {
 
         let tool = ShellTool::new(test_security_with_env_cmd(), test_runtime());
         let result = tool
-            .execute(json!({"command": "env"}))
+            .execute(json!({"command": env_listing_command()}))
             .await
             .expect("env command execution should succeed");
         assert!(result.success);
@@ -505,17 +568,18 @@ mod tests {
         let tool = ShellTool::new(test_security_with_env_cmd(), test_runtime());
 
         let result = tool
-            .execute(json!({"command": "env"}))
+            .execute(json!({"command": env_listing_command()}))
             .await
             .expect("env command should succeed");
         assert!(result.success);
         assert!(
-            result.output.contains("HOME="),
-            "HOME should be available in shell environment"
+            output_contains_env_key(&result.output, "PATH"),
+            "PATH should be available in shell environment"
         );
         assert!(
-            result.output.contains("PATH="),
-            "PATH should be available in shell environment"
+            output_contains_env_key(&result.output, "HOME")
+                || output_contains_env_key(&result.output, "USERPROFILE"),
+            "HOME or USERPROFILE should be available in shell environment"
         );
     }
 
@@ -543,13 +607,15 @@ mod tests {
         );
 
         let result = tool
-            .execute(json!({"command": "env"}))
+            .execute(json!({"command": env_listing_command()}))
             .await
             .expect("env command execution should succeed");
         assert!(result.success);
-        assert!(result
-            .output
-            .contains("rain_TEST_PASSTHROUGH=db://unit-test"));
+        assert!(output_contains_env_entry(
+            &result.output,
+            "rain_TEST_PASSTHROUGH",
+            "db://unit-test"
+        ));
     }
 
     #[test]
@@ -572,16 +638,18 @@ mod tests {
 
     #[tokio::test]
     async fn shell_requires_approval_for_medium_risk_command() {
+        let target_name = "rain_shell_approval_test";
         let security = Arc::new(SecurityPolicy {
             autonomy: AutonomyLevel::Supervised,
-            allowed_commands: vec!["touch".into()],
+            allowed_commands: medium_risk_allowed_commands(),
             workspace_dir: std::env::temp_dir(),
             ..SecurityPolicy::default()
         });
 
         let tool = ShellTool::new(security.clone(), test_runtime());
+        let command = medium_risk_create_command(target_name);
         let denied = tool
-            .execute(json!({"command": "touch rain_shell_approval_test"}))
+            .execute(json!({"command": command}))
             .await
             .expect("unapproved command should return a result");
         assert!(!denied.success);
@@ -593,14 +661,14 @@ mod tests {
 
         let allowed = tool
             .execute(json!({
-                "command": "touch rain_shell_approval_test",
+                "command": medium_risk_create_command(target_name),
                 "approved": true
             }))
             .await
             .expect("approved command execution should succeed");
         assert!(allowed.success);
 
-        let _ = tokio::fs::remove_file(std::env::temp_dir().join("rain_shell_approval_test")).await;
+        cleanup_medium_risk_target(&std::env::temp_dir().join(target_name)).await;
     }
 
     // ── shell timeout enforcement tests ─────────────────

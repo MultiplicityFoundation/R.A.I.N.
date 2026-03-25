@@ -6202,8 +6202,10 @@ struct ActiveWorkspaceState {
 }
 
 fn default_config_dir() -> Result<PathBuf> {
-    let home = UserDirs::new()
-        .map(|u| u.home_dir().to_path_buf())
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("USERPROFILE").map(PathBuf::from))
+        .or_else(|| UserDirs::new().map(|u| u.home_dir().to_path_buf()))
         .context("Could not find home directory")?;
     Ok(home.join(".R.A.I.N."))
 }
@@ -6215,6 +6217,9 @@ fn active_workspace_state_path(default_dir: &Path) -> PathBuf {
 /// Returns `true` if `path` lives under the OS temp directory.
 fn is_temp_directory(path: &Path) -> bool {
     let temp = std::env::temp_dir();
+    if path.starts_with(&temp) {
+        return true;
+    }
     // Canonicalize when possible to handle symlinks (macOS /var → /private/var)
     let canon_temp = temp.canonicalize().unwrap_or_else(|_| temp.clone());
     let canon_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());

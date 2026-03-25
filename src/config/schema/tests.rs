@@ -2551,6 +2551,7 @@ async fn load_or_init_decrypts_feishu_channel_secrets() {
 
     let original_home = std::env::var("HOME").ok();
     std::env::set_var("HOME", &temp_home);
+    std::env::remove_var("rain_CONFIG_DIR");
     std::env::remove_var("rain_WORKSPACE");
 
     let mut config = Config::default();

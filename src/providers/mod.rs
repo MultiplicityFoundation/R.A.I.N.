@@ -1736,6 +1736,14 @@ mod tests {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
+    fn fake_qwen_home(label: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "R.A.I.N.-qwen-oauth-home-{}-{}",
+            std::process::id(),
+            label
+        ))
+    }
+
     #[test]
     fn resolve_provider_credential_prefers_explicit_argument() {
         let resolved = resolve_provider_credential("openrouter", Some("  explicit-key  "));
@@ -1796,8 +1804,9 @@ mod tests {
     #[test]
     fn resolve_qwen_oauth_context_prefers_explicit_override() {
         let _env_lock = env_lock();
-        let fake_home = format!("/tmp/R.A.I.N.-qwen-oauth-home-{}", std::process::id());
-        let _home_guard = EnvGuard::set("HOME", Some(fake_home.as_str()));
+        let fake_home = fake_qwen_home("explicit");
+        let fake_home_str = fake_home.to_string_lossy().to_string();
+        let _home_guard = EnvGuard::set("HOME", Some(fake_home_str.as_str()));
         let _token_guard = EnvGuard::set(QWEN_OAUTH_TOKEN_ENV, Some("oauth-token"));
         let _resource_guard = EnvGuard::set(
             QWEN_OAUTH_RESOURCE_URL_ENV,
@@ -1813,8 +1822,9 @@ mod tests {
     #[test]
     fn resolve_qwen_oauth_context_uses_env_token_and_resource_url() {
         let _env_lock = env_lock();
-        let fake_home = format!("/tmp/R.A.I.N.-qwen-oauth-home-{}-env", std::process::id());
-        let _home_guard = EnvGuard::set("HOME", Some(fake_home.as_str()));
+        let fake_home = fake_qwen_home("env");
+        let fake_home_str = fake_home.to_string_lossy().to_string();
+        let _home_guard = EnvGuard::set("HOME", Some(fake_home_str.as_str()));
         let _token_guard = EnvGuard::set(QWEN_OAUTH_TOKEN_ENV, Some("oauth-token"));
         let _refresh_guard = EnvGuard::set(QWEN_OAUTH_REFRESH_TOKEN_ENV, None);
         let _resource_guard = EnvGuard::set(
@@ -1835,8 +1845,8 @@ mod tests {
     #[test]
     fn resolve_qwen_oauth_context_reads_cached_credentials_file() {
         let _env_lock = env_lock();
-        let fake_home = format!("/tmp/R.A.I.N.-qwen-oauth-home-{}-file", std::process::id());
-        let creds_dir = PathBuf::from(&fake_home).join(".qwen");
+        let fake_home = fake_qwen_home("file");
+        let creds_dir = fake_home.join(".qwen");
         std::fs::create_dir_all(&creds_dir).unwrap();
         let creds_path = creds_dir.join("oauth_creds.json");
         std::fs::write(
@@ -1845,7 +1855,8 @@ mod tests {
         )
         .unwrap();
 
-        let _home_guard = EnvGuard::set("HOME", Some(fake_home.as_str()));
+        let fake_home_str = fake_home.to_string_lossy().to_string();
+        let _home_guard = EnvGuard::set("HOME", Some(fake_home_str.as_str()));
         let _token_guard = EnvGuard::set(QWEN_OAUTH_TOKEN_ENV, None);
         let _refresh_guard = EnvGuard::set(QWEN_OAUTH_REFRESH_TOKEN_ENV, None);
         let _resource_guard = EnvGuard::set(QWEN_OAUTH_RESOURCE_URL_ENV, None);
@@ -1863,11 +1874,9 @@ mod tests {
     #[test]
     fn resolve_qwen_oauth_context_placeholder_does_not_use_dashscope_fallback() {
         let _env_lock = env_lock();
-        let fake_home = format!(
-            "/tmp/R.A.I.N.-qwen-oauth-home-{}-placeholder",
-            std::process::id()
-        );
-        let _home_guard = EnvGuard::set("HOME", Some(fake_home.as_str()));
+        let fake_home = fake_qwen_home("placeholder");
+        let fake_home_str = fake_home.to_string_lossy().to_string();
+        let _home_guard = EnvGuard::set("HOME", Some(fake_home_str.as_str()));
         let _token_guard = EnvGuard::set(QWEN_OAUTH_TOKEN_ENV, None);
         let _refresh_guard = EnvGuard::set(QWEN_OAUTH_REFRESH_TOKEN_ENV, None);
         let _resource_guard = EnvGuard::set(QWEN_OAUTH_RESOURCE_URL_ENV, None);

@@ -48,8 +48,14 @@ impl RuntimeAdapter for NativeRuntime {
 
         #[cfg(target_os = "windows")]
         {
-            let mut process = tokio::process::Command::new("cmd.exe");
-            process.arg("/C").arg(command).current_dir(workspace_dir);
+            let mut process = tokio::process::Command::new("powershell.exe");
+            process
+                .arg("-NoLogo")
+                .arg("-NoProfile")
+                .arg("-NonInteractive")
+                .arg("-Command")
+                .arg(command)
+                .current_dir(workspace_dir);
             Ok(process)
         }
     }

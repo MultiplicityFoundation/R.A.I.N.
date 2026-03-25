@@ -1254,7 +1254,7 @@ impl SlackChannel {
     }
 
     fn sanitize_attachment_filename(file_name: &str) -> Option<String> {
-        let basename = Path::new(file_name).file_name()?.to_str()?.trim();
+        let basename = file_name.rsplit(['/', '\\']).next()?.trim();
         if basename.is_empty() || basename == "." || basename == ".." {
             return None;
         }
@@ -3103,7 +3103,7 @@ mod tests {
         );
         assert_eq!(
             SlackChannel::sanitize_attachment_filename(r"..\\..\\secret.txt").as_deref(),
-            Some("..__..__secret.txt")
+            Some("secret.txt")
         );
         assert!(SlackChannel::sanitize_attachment_filename("..").is_none());
     }

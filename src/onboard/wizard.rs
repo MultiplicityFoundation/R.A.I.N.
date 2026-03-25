@@ -495,6 +495,10 @@ fn quick_setup_homebrew_service_note(
     workspace_dir: &Path,
     exe: &Path,
 ) -> Option<String> {
+    fn display_posix(path: &Path) -> String {
+        path.display().to_string().replace('\\', "/")
+    }
+
     let prefix = homebrew_prefix_for_exe(exe)?;
     let service_root = Path::new(prefix).join("var").join("R.A.I.N.");
     let service_config = service_root.join("config.toml");
@@ -506,9 +510,9 @@ fn quick_setup_homebrew_service_note(
 
     Some(format!(
         "Homebrew service note: `brew services` uses {} (config {}) by default. Your onboarding just wrote {}. If you plan to run R.A.I.N. as a service, copy or link this workspace first.",
-        service_workspace.display(),
-        service_config.display(),
-        config_path.display(),
+        display_posix(&service_workspace),
+        display_posix(&service_config),
+        display_posix(config_path),
     ))
 }
 

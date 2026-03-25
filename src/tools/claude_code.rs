@@ -409,11 +409,21 @@ mod tests {
 
     #[tokio::test]
     async fn claude_code_rejects_path_outside_workspace() {
-        let tool = ClaudeCodeTool::new(test_security(AutonomyLevel::Full), test_config());
+        let root = tempfile::tempdir().unwrap();
+        let workspace = root.path().join("workspace");
+        let outside = root.path().join("outside");
+        std::fs::create_dir_all(&workspace).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        let security = Arc::new(SecurityPolicy {
+            autonomy: AutonomyLevel::Full,
+            workspace_dir: workspace,
+            ..SecurityPolicy::default()
+        });
+        let tool = ClaudeCodeTool::new(security, test_config());
         let result = tool
             .execute(json!({
                 "prompt": "hello",
-                "working_directory": "/etc"
+                "working_directory": outside.to_string_lossy().to_string()
             }))
             .await
             .expect("should return a result for path validation");

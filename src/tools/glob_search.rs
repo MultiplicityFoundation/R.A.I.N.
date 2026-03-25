@@ -58,7 +58,7 @@ impl Tool for GlobSearchTool {
         }
 
         // Security: reject absolute paths unless under an explicit allowed root.
-        if (pattern.starts_with('/') || pattern.starts_with('\\'))
+        if SecurityPolicy::path_looks_absolute(pattern)
             && !self.security.is_under_allowed_root(pattern)
         {
             return Ok(ToolResult {

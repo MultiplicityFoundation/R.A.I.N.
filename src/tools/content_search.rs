@@ -172,7 +172,7 @@ impl Tool for ContentSearchTool {
 
         // --- Path security checks ---
         // Reject absolute paths unless they fall under an explicit allowed root.
-        if std::path::Path::new(search_path).is_absolute()
+        if SecurityPolicy::path_looks_absolute(search_path)
             && !self.security.is_under_allowed_root(search_path)
         {
             return Ok(ToolResult {

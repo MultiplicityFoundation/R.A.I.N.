@@ -395,8 +395,8 @@ mod tests {
         );
     }
 
-    /// Helper: create a provider that uses a shell script echoing stdin back.
-    /// The script ignores CLI flags (`--print`, `--model`, `-`) and just cats stdin.
+    /// Helper: create a provider that uses a tiny script echoing stdin back.
+    /// The script ignores CLI flags (`--print`, `--model`, `-`) and just mirrors stdin.
     fn echo_provider() -> ClaudeCodeProvider {
         use std::io::Write;
 
@@ -405,13 +405,23 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
 
         let script_id = SCRIPT_ID.fetch_add(1, Ordering::Relaxed);
+        #[cfg(not(target_os = "windows"))]
         let path = dir.join(format!(
             "fake_claude_{}_{}.sh",
             std::process::id(),
             script_id
         ));
+        #[cfg(target_os = "windows")]
+        let path = dir.join(format!(
+            "fake_claude_{}_{}.cmd",
+            std::process::id(),
+            script_id
+        ));
         let mut f = std::fs::File::create(&path).unwrap();
+        #[cfg(not(target_os = "windows"))]
         writeln!(f, "#!/bin/sh\ncat").unwrap();
+        #[cfg(target_os = "windows")]
+        writeln!(f, "@echo off\r\nmore").unwrap();
         drop(f);
         #[cfg(unix)]
         {
@@ -426,6 +436,10 @@ mod tests {
         let first = echo_provider();
         let second = echo_provider();
         assert_ne!(first.binary_path, second.binary_path);
+    }
+
+    fn normalized_newlines(text: &str) -> String {
+        text.replace("\r\n", "\n")
     }
 
     #[tokio::test]
@@ -450,7 +464,7 @@ mod tests {
             .chat_with_history(&messages, "default", 1.0)
             .await
             .unwrap();
-        assert_eq!(result, "You are helpful.\n\nhello");
+        assert_eq!(normalized_newlines(&result), "You are helpful.\n\nhello");
     }
 
     #[tokio::test]
@@ -466,6 +480,7 @@ mod tests {
             .chat_with_history(&messages, "default", 1.0)
             .await
             .unwrap();
+        let result = normalized_newlines(&result);
         assert!(result.contains("[system]\nBe concise."));
         assert!(result.contains("[user]\nWhat is 2+2?"));
         assert!(result.contains("[assistant]\n4"));
@@ -485,6 +500,7 @@ mod tests {
             .chat_with_history(&messages, "default", 1.0)
             .await
             .unwrap();
+        let result = normalized_newlines(&result);
         assert!(!result.contains("[system]"));
         assert!(result.contains("[user]\nhi"));
         assert!(result.contains("[assistant]\nhello"));

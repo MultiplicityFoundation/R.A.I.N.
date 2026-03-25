@@ -160,6 +160,30 @@ mod tests {
     };
     use tokio::process::Command;
 
+    fn spawn_long_running_child() -> std::io::Result<tokio::process::Child> {
+        #[cfg(not(target_os = "windows"))]
+        {
+            Command::new("sleep")
+                .arg("30")
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            Command::new("powershell.exe")
+                .arg("-NoLogo")
+                .arg("-NoProfile")
+                .arg("-NonInteractive")
+                .arg("-Command")
+                .arg("Start-Sleep -Seconds 30")
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+        }
+    }
+
     /// Helper: assert `create_tunnel` returns an error containing `needle`.
     fn assert_tunnel_err(cfg: &TunnelConfig, needle: &str) {
         match create_tunnel(cfg) {
@@ -422,12 +446,7 @@ mod tests {
     async fn kill_shared_terminates_and_clears_child() {
         let proc = new_shared_process();
 
-        let child = Command::new("sleep")
-            .arg("30")
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .expect("sleep should spawn for lifecycle test");
+        let child = spawn_long_running_child().expect("sleep should spawn for lifecycle test");
 
         {
             let mut guard = proc.lock().await;

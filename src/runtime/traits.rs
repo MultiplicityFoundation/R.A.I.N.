@@ -102,8 +102,24 @@ mod tests {
             command: &str,
             workspace_dir: &Path,
         ) -> anyhow::Result<tokio::process::Command> {
-            let mut cmd = tokio::process::Command::new("echo");
-            cmd.arg(command);
+            #[cfg(not(target_os = "windows"))]
+            let mut cmd = {
+                let mut cmd = tokio::process::Command::new("sh");
+                cmd.arg("-c").arg(format!("printf '%s\\n' \"{command}\""));
+                cmd
+            };
+
+            #[cfg(target_os = "windows")]
+            let mut cmd = {
+                let mut cmd = tokio::process::Command::new("powershell.exe");
+                cmd.arg("-NoLogo")
+                    .arg("-NoProfile")
+                    .arg("-NonInteractive")
+                    .arg("-Command")
+                    .arg(format!("Write-Output '{command}'"));
+                cmd
+            };
+
             cmd.current_dir(workspace_dir);
             Ok(cmd)
         }

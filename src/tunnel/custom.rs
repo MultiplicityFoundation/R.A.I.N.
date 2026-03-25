@@ -35,6 +35,27 @@ impl CustomTunnel {
     }
 }
 
+fn build_custom_tunnel_command(command: &str) -> Command {
+    #[cfg(not(target_os = "windows"))]
+    {
+        let mut process = Command::new("sh");
+        process.arg("-c").arg(command);
+        process
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let mut process = Command::new("powershell.exe");
+        process
+            .arg("-NoLogo")
+            .arg("-NoProfile")
+            .arg("-NonInteractive")
+            .arg("-Command")
+            .arg(command);
+        process
+    }
+}
+
 #[async_trait::async_trait]
 impl Tunnel for CustomTunnel {
     fn name(&self) -> &str {
@@ -47,13 +68,11 @@ impl Tunnel for CustomTunnel {
             .replace("{port}", &local_port.to_string())
             .replace("{host}", local_host);
 
-        let parts: Vec<&str> = cmd.split_whitespace().collect();
-        if parts.is_empty() {
+        if cmd.trim().is_empty() {
             bail!("Custom tunnel start_command is empty");
         }
 
-        let mut child = Command::new(parts[0])
-            .args(&parts[1..])
+        let mut child = build_custom_tunnel_command(&cmd)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .kill_on_drop(true)
@@ -204,6 +223,20 @@ mod tests {
         let url = tunnel.start("10.1.2.3", 4321).await.unwrap();
 
         assert_eq!(url, "http://10.1.2.3:4321");
+        tunnel.stop().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn start_with_shell_quoted_command_extracts_url() {
+        let tunnel = CustomTunnel::new(
+            "echo \"https://quoted.example\"".into(),
+            None,
+            Some("quoted.example".into()),
+        );
+
+        let url = tunnel.start("localhost", 9999).await.unwrap();
+
+        assert_eq!(url, "https://quoted.example");
         tunnel.stop().await.unwrap();
     }
 
