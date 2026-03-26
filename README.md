@@ -233,6 +233,6 @@ R.A.I.N. Lab is a [Vers3Dynamics](https://vers3dynamics.com/) project built on [
  <picture>
    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/image?repos=topherchris420/james_library&type=date&theme=dark&legend=top-left" />
    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/image?repos=topherchris420/james_library&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/image?repos=topherchris420/james_library&type=date&legend=top-left" />
+   <img alt="Vers3Dynamics" src="https://api.star-history.com/image?repos=topherchris420/james_library&type=date&legend=top-left" />
  </picture>
 </a>
