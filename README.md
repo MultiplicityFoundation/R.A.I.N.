@@ -21,9 +21,6 @@
 </p>
 
 
-https://github.com/user-attachments/assets/e9f8494a-277c-401f-b1f6-2fb7e3238fa2
-
-
 The R.A.I.N. Lab is a local-first AI research lab for people who want deeper answers to their questions.
 It helps you test ideas, compare viewpoints, run structured debates, and generate shareable results without
 sending your data off-machine by default.
@@ -34,7 +31,7 @@ the conversation loop forever.
 
 <p align="center">
   <a href="assets/hello.mp4" title="Play the R.A.I.N. Lab demo video">
-    <img src="assets/rain_lab.png" alt="R.A.I.N. Lab demo video preview" width="760" />
+    <img src="assets/hello-preview.gif" alt="R.A.I.N. Lab demo video preview" width="760" />
   </a>
 </p>
 
