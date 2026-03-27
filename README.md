@@ -31,13 +31,13 @@ the conversation loop forever.
 ## Demo Video
 
 <p align="center">
-  <video src="assets/hello.mp4" controls muted playsinline width="100%" poster="assets/rain_lab.png">
-    <a href="assets/hello.mp4">Watch the R.A.I.N. Lab demo video</a>
-  </video>
+  <a href="assets/hello.mp4">
+    <img src="assets/rain_lab.png" alt="Click to play the R.A.I.N. Lab demo video" width="100%" />
+  </a>
 </p>
 
 <p align="center">
-  Short product demo showing the launcher and research flow.
+  Click the preview above to open the MP4 demo video.
 </p>
 
 ## Start Fast
