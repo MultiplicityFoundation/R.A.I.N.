@@ -321,7 +321,7 @@ mod tests {
     use crate::observability::NoopObserver;
     use async_trait::async_trait;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
 
     struct CountingTool {
         name: String,
@@ -368,6 +368,125 @@ mod tests {
             Ok(crate::tools::ToolResult {
                 success: true,
                 output: format!("counted:{value}"),
+                error: None,
+            })
+        }
+    }
+
+    struct RecordingArgsTool {
+        name: String,
+        recorded_args: Arc<Mutex<Vec<serde_json::Value>>>,
+    }
+
+    impl RecordingArgsTool {
+        fn new(name: &str, recorded_args: Arc<Mutex<Vec<serde_json::Value>>>) -> Self {
+            Self {
+                name: name.to_string(),
+                recorded_args,
+            }
+        }
+    }
+
+    #[async_trait]
+    impl Tool for RecordingArgsTool {
+        fn name(&self) -> &str {
+            &self.name
+        }
+
+        fn description(&self) -> &str {
+            "Records tool arguments for regression tests"
+        }
+
+        fn parameters_schema(&self) -> serde_json::Value {
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "prompt": { "type": "string" },
+                    "schedule": { "type": "object" },
+                    "delivery": { "type": "object" }
+                }
+            })
+        }
+
+        async fn execute(
+            &self,
+            args: serde_json::Value,
+        ) -> anyhow::Result<crate::tools::ToolResult> {
+            self.recorded_args
+                .lock()
+                .expect("recorded args lock should be valid")
+                .push(args.clone());
+            Ok(crate::tools::ToolResult {
+                success: true,
+                output: args.to_string(),
+                error: None,
+            })
+        }
+    }
+
+    struct DelayTool {
+        name: String,
+        delay_ms: u64,
+        active: Arc<AtomicUsize>,
+        max_active: Arc<AtomicUsize>,
+    }
+
+    impl DelayTool {
+        fn new(
+            name: &str,
+            delay_ms: u64,
+            active: Arc<AtomicUsize>,
+            max_active: Arc<AtomicUsize>,
+        ) -> Self {
+            Self {
+                name: name.to_string(),
+                delay_ms,
+                active,
+                max_active,
+            }
+        }
+    }
+
+    #[async_trait]
+    impl Tool for DelayTool {
+        fn name(&self) -> &str {
+            &self.name
+        }
+
+        fn description(&self) -> &str {
+            "Delay tool for testing parallel tool execution"
+        }
+
+        fn parameters_schema(&self) -> serde_json::Value {
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "value": { "type": "string" }
+                },
+                "required": ["value"]
+            })
+        }
+
+        async fn execute(
+            &self,
+            args: serde_json::Value,
+        ) -> anyhow::Result<crate::tools::ToolResult> {
+            let now_active = self.active.fetch_add(1, Ordering::SeqCst) + 1;
+            self.max_active.fetch_max(now_active, Ordering::SeqCst);
+
+            tokio::time::sleep(Duration::from_millis(self.delay_ms)).await;
+
+            self.active.fetch_sub(1, Ordering::SeqCst);
+
+            let value = args
+                .get("value")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+
+            Ok(crate::tools::ToolResult {
+                success: true,
+                output: format!("ok:{value}"),
                 error: None,
             })
         }
@@ -430,6 +549,128 @@ mod tests {
         assert!(outcome.success);
         assert_eq!(outcome.output, "counted:ok");
         assert_eq!(invocations.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn maybe_inject_channel_delivery_defaults_adds_announce_delivery_for_agent_jobs() {
+        let mut args = serde_json::json!({
+            "job_type": "agent",
+            "prompt": "remind me later",
+            "schedule": { "kind": "every", "every_ms": 60000 }
+        });
+
+        maybe_inject_channel_delivery_defaults("cron_add", &mut args, "telegram", Some("chat-42"));
+
+        assert_eq!(
+            args["delivery"],
+            serde_json::json!({
+                "mode": "announce",
+                "channel": "telegram",
+                "to": "chat-42",
+            })
+        );
+    }
+
+    #[test]
+    fn maybe_inject_channel_delivery_defaults_preserves_explicit_none_mode() {
+        let mut args = serde_json::json!({
+            "job_type": "agent",
+            "prompt": "run silently",
+            "schedule": { "kind": "every", "every_ms": 60000 },
+            "delivery": { "mode": "none" }
+        });
+
+        maybe_inject_channel_delivery_defaults("cron_add", &mut args, "telegram", Some("chat-42"));
+
+        assert_eq!(args["delivery"], serde_json::json!({ "mode": "none" }));
+    }
+
+    #[tokio::test]
+    async fn execute_tools_parallel_preserves_input_order() {
+        let active = Arc::new(AtomicUsize::new(0));
+        let max_active = Arc::new(AtomicUsize::new(0));
+        let tools_registry: Vec<Box<dyn Tool>> = vec![
+            Box::new(DelayTool::new(
+                "delay_a",
+                200,
+                Arc::clone(&active),
+                Arc::clone(&max_active),
+            )),
+            Box::new(DelayTool::new(
+                "delay_b",
+                200,
+                Arc::clone(&active),
+                Arc::clone(&max_active),
+            )),
+        ];
+        let tool_calls = vec![
+            ParsedToolCall {
+                name: "delay_a".to_string(),
+                arguments: serde_json::json!({ "value": "A" }),
+                tool_call_id: None,
+            },
+            ParsedToolCall {
+                name: "delay_b".to_string(),
+                arguments: serde_json::json!({ "value": "B" }),
+                tool_call_id: None,
+            },
+        ];
+        let observer = NoopObserver;
+
+        let outcomes =
+            execute_tools_parallel(&tool_calls, &tools_registry, None, None, &observer, None)
+                .await
+                .expect("parallel execution should succeed");
+
+        assert_eq!(outcomes.len(), 2);
+        assert_eq!(outcomes[0].output, "ok:A");
+        assert_eq!(outcomes[1].output, "ok:B");
+        assert!(
+            max_active.load(Ordering::SeqCst) >= 2,
+            "parallel execution should overlap the tool calls"
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_one_tool_records_transformed_cron_arguments_after_delivery_defaults() {
+        let observer = NoopObserver;
+        let recorded_args = Arc::new(Mutex::new(Vec::new()));
+        let tools_registry: Vec<Box<dyn Tool>> = vec![Box::new(RecordingArgsTool::new(
+            "cron_add",
+            Arc::clone(&recorded_args),
+        ))];
+        let mut args = serde_json::json!({
+            "job_type": "agent",
+            "prompt": "remind me later",
+            "schedule": { "kind": "every", "every_ms": 60000 }
+        });
+
+        maybe_inject_channel_delivery_defaults("cron_add", &mut args, "telegram", Some("chat-42"));
+
+        let outcome = execute_one_tool(
+            "cron_add",
+            args,
+            &tools_registry,
+            None,
+            None,
+            &observer,
+            None,
+        )
+        .await
+        .expect("cron_add should execute successfully");
+
+        assert!(outcome.success);
+        let recorded = recorded_args
+            .lock()
+            .expect("recorded args lock should be valid");
+        assert_eq!(
+            recorded[0]["delivery"],
+            serde_json::json!({
+                "mode": "announce",
+                "channel": "telegram",
+                "to": "chat-42",
+            })
+        );
     }
 
     #[test]
