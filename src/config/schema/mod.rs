@@ -1,162 +1,43 @@
-use crate::config::traits::ChannelConfig;
-use crate::providers::{is_glm_alias, is_zai_alias};
+﻿use crate::providers::{is_glm_alias, is_zai_alias};
 use crate::security::{AutonomyLevel, DomainMatcher};
 use anyhow::{Context, Result};
 use directories::UserDirs;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::future::Future;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, RwLock};
 #[cfg(unix)]
 use tokio::fs::File;
 use tokio::fs::{self, OpenOptions};
 use tokio::io::AsyncWriteExt;
 
+mod channels;
 mod config_impl;
 mod ops;
+mod proxy;
 mod root_config;
+mod security;
 
-const SUPPORTED_PROXY_SERVICE_KEYS: &[&str] = &[
-    "provider.anthropic",
-    "provider.compatible",
-    "provider.copilot",
-    "provider.gemini",
-    "provider.glm",
-    "provider.ollama",
-    "provider.openai",
-    "provider.openrouter",
-    "channel.dingtalk",
-    "channel.discord",
-    "channel.feishu",
-    "channel.lark",
-    "channel.matrix",
-    "channel.mattermost",
-    "channel.nextcloud_talk",
-    "channel.qq",
-    "channel.signal",
-    "channel.slack",
-    "channel.telegram",
-    "channel.wati",
-    "channel.whatsapp",
-    "tool.browser",
-    "tool.composio",
-    "tool.http_request",
-    "tool.pushover",
-    "memory.embeddings",
-    "tunnel.custom",
-    "transcription.groq",
-];
+// Ã¢â€â‚¬Ã¢â€â‚¬ Top-level config Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
-const SUPPORTED_PROXY_SERVICE_SELECTORS: &[&str] = &[
-    "provider.*",
-    "channel.*",
-    "tool.*",
-    "memory.*",
-    "tunnel.*",
-    "transcription.*",
-];
-
-#[derive(Debug, Default)]
-struct RuntimeProxyState {
-    config: RwLock<ProxyConfig>,
-    client_cache: RwLock<HashMap<String, reqwest::Client>>,
-}
-
-#[derive(Clone, Debug)]
-pub struct RuntimeProxyStateHandle {
-    inner: Arc<RuntimeProxyState>,
-}
-
-impl Default for RuntimeProxyStateHandle {
-    fn default() -> Self {
-        Self {
-            inner: Arc::new(RuntimeProxyState::default()),
-        }
-    }
-}
-
-impl RuntimeProxyStateHandle {
-    fn config(&self) -> ProxyConfig {
-        match self.inner.config.read() {
-            Ok(guard) => guard.clone(),
-            Err(poisoned) => poisoned.into_inner().clone(),
-        }
-    }
-
-    fn set_config(&self, config: ProxyConfig) {
-        match self.inner.config.write() {
-            Ok(mut guard) => {
-                *guard = config;
-            }
-            Err(poisoned) => {
-                *poisoned.into_inner() = config;
-            }
-        }
-        self.clear_client_cache();
-    }
-
-    fn cached_client(&self, cache_key: &str) -> Option<reqwest::Client> {
-        match self.inner.client_cache.read() {
-            Ok(guard) => guard.get(cache_key).cloned(),
-            Err(poisoned) => poisoned.into_inner().get(cache_key).cloned(),
-        }
-    }
-
-    fn set_cached_client(&self, cache_key: String, client: reqwest::Client) {
-        match self.inner.client_cache.write() {
-            Ok(mut guard) => {
-                guard.insert(cache_key, client);
-            }
-            Err(poisoned) => {
-                poisoned.into_inner().insert(cache_key, client);
-            }
-        }
-    }
-
-    fn clear_client_cache(&self) {
-        match self.inner.client_cache.write() {
-            Ok(mut guard) => {
-                guard.clear();
-            }
-            Err(poisoned) => {
-                poisoned.into_inner().clear();
-            }
-        }
-    }
-
-    #[cfg(test)]
-    fn contains_cached_client(&self, cache_key: &str) -> bool {
-        match self.inner.client_cache.read() {
-            Ok(guard) => guard.contains_key(cache_key),
-            Err(poisoned) => poisoned.into_inner().contains_key(cache_key),
-        }
-    }
-}
-
-tokio::task_local! {
-    static ACTIVE_RUNTIME_PROXY_STATE: RuntimeProxyStateHandle;
-}
-
-pub async fn with_runtime_proxy_state<T>(
-    state: RuntimeProxyStateHandle,
-    future: impl Future<Output = T>,
-) -> T {
-    ACTIVE_RUNTIME_PROXY_STATE.scope(state, future).await
-}
-
-fn current_runtime_proxy_state() -> Option<RuntimeProxyStateHandle> {
-    ACTIVE_RUNTIME_PROXY_STATE.try_with(Clone::clone).ok()
-}
-
-// ── Top-level config ──────────────────────────────────────────────
-
+pub use channels::*;
+#[cfg(test)]
+pub(crate) use channels::{default_draft_update_interval_ms, default_session_backend};
 pub use ops::{CloudOpsConfig, ConversationalAiConfig, SecurityOpsConfig};
+pub use proxy::*;
+#[cfg(test)]
+pub(crate) use proxy::{
+    clear_runtime_proxy_client_cache, current_runtime_proxy_state, runtime_proxy_cache_key,
+};
+pub(crate) use proxy::{
+    normalize_no_proxy_list, normalize_proxy_url_option, normalize_service_list,
+    parse_proxy_enabled, parse_proxy_scope,
+};
 pub use root_config::{
     Config, DelegateAgentConfig, DelegateToolConfig, ModelProviderConfig, SwarmConfig,
     SwarmStrategy, WorkspaceConfig, TEMPERATURE_RANGE,
 };
+pub use security::*;
 
 fn default_temperature() -> f64 {
     root_config::DEFAULT_TEMPERATURE
@@ -227,7 +108,7 @@ fn default_max_tool_iterations() -> usize {
     10
 }
 
-// ── Hardware Config (wizard-driven) ─────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Hardware Config (wizard-driven) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 /// Hardware transport mode.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default, JsonSchema)]
@@ -297,7 +178,7 @@ impl Default for HardwareConfig {
     }
 }
 
-// ── Transcription ────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Transcription Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 fn default_transcription_api_url() -> String {
     "https://api.groq.com/openai/v1/audio/transcriptions".into()
@@ -398,7 +279,7 @@ impl Default for TranscriptionConfig {
     }
 }
 
-// ── MCP ─────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ MCP Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 /// Transport type for MCP server connections.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Default)]
@@ -499,7 +380,7 @@ impl Default for VerifiableIntentConfig {
     }
 }
 
-// ── Nodes (Dynamic Node Discovery) ───────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Nodes (Dynamic Node Discovery) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 /// Configuration for the dynamic node discovery system (`[nodes]`).
 ///
@@ -532,7 +413,7 @@ impl Default for NodesConfig {
     }
 }
 
-// ── TTS (Text-to-Speech) ─────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ TTS (Text-to-Speech) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 fn default_tts_provider() -> String {
     "openai".into()
@@ -772,10 +653,10 @@ pub struct LocalWhisperConfig {
     /// Bearer token for endpoint authentication.
     pub bearer_token: String,
     /// Maximum audio file size in bytes accepted by this endpoint.
-    /// Defaults to 25 MB — matching the cloud API cap for a safe out-of-the-box
+    /// Defaults to 25 MB Ã¢â‚¬â€ matching the cloud API cap for a safe out-of-the-box
     /// experience. Self-hosted endpoints can accept much larger files; raise this
     /// as needed, but note that each transcription call clones the audio buffer
-    /// into a multipart payload, so peak memory per request is ~2× this value.
+    /// into a multipart payload, so peak memory per request is ~2Ãƒâ€” this value.
     #[serde(default = "default_local_whisper_max_audio_bytes")]
     pub max_audio_bytes: usize,
     /// Request timeout in seconds. Defaults to 300 (large files on local GPU).
@@ -822,7 +703,7 @@ pub struct AgentConfig {
     ///
     /// When non-empty, only MCP tools matched by an active group are included in the
     /// tool schema sent to the LLM for that turn. Built-in tools always pass through.
-    /// Default: `[]` (no filtering — all tools included).
+    /// Default: `[]` (no filtering Ã¢â‚¬â€ all tools included).
     #[serde(default)]
     pub tool_filter_groups: Vec<ToolFilterGroup>,
 
@@ -877,12 +758,12 @@ impl Default for AgentConfig {
     }
 }
 
-// ── Pacing ────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Pacing Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 /// Pacing controls for slow/local LLM workloads (`[pacing]` section).
 ///
 /// All fields are optional and default to values that preserve existing
-/// behavior. When set, they extend — not replace — the existing timeout
+/// behavior. When set, they extend Ã¢â‚¬â€ not replace Ã¢â‚¬â€ the existing timeout
 /// and loop-detection subsystems.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct PacingConfig {
@@ -1023,7 +904,7 @@ impl Default for MultimodalConfig {
     }
 }
 
-// ── Identity (AIEOS / OpenClaw format) ──────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Identity (AIEOS / OpenClaw format) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 /// Identity format configuration (`[identity]` section).
 ///
@@ -1055,7 +936,7 @@ impl Default for IdentityConfig {
     }
 }
 
-// ── Cost tracking and budget enforcement ───────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Cost tracking and budget enforcement Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 /// Cost tracking and budget enforcement configuration (`[cost]` section).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -1198,7 +1079,7 @@ fn get_default_pricing() -> std::collections::HashMap<String, ModelPricing> {
     prices
 }
 
-// ── Peripherals (hardware: STM32, RPi GPIO, etc.) ────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Peripherals (hardware: STM32, RPi GPIO, etc.) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 /// Peripheral board integration configuration (`[peripherals]` section).
 ///
@@ -1252,7 +1133,7 @@ impl Default for PeripheralBoardConfig {
     }
 }
 
-// ── Gateway security ─────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Gateway security Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 /// Gateway server configuration (`[gateway]` section).
 ///
@@ -1487,7 +1368,7 @@ impl Default for NodeTransportConfig {
     }
 }
 
-// ── Composio (managed tool surface) ─────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Composio (managed tool surface) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 /// Composio managed OAuth tools integration (`[composio]` section).
 ///
@@ -1519,7 +1400,7 @@ impl Default for ComposioConfig {
     }
 }
 
-// ── Microsoft 365 (Graph API integration) ───────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Microsoft 365 (Graph API integration) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 /// Microsoft 365 integration via Microsoft Graph API (`[microsoft365]` section).
 ///
@@ -1591,7 +1472,7 @@ impl Default for Microsoft365Config {
     }
 }
 
-// ── Secrets (encrypted credential store) ────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Secrets (encrypted credential store) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 /// Secrets encryption configuration (`[secrets]` section).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -1607,7 +1488,7 @@ impl Default for SecretsConfig {
     }
 }
 
-// ── Browser (friendly-service browsing only) ───────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Browser (friendly-service browsing only) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 /// Computer-use sidecar configuration (`[browser.computer_use]` section).
 ///
@@ -1713,7 +1594,7 @@ impl Default for BrowserConfig {
     }
 }
 
-// ── HTTP request tool ───────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ HTTP request tool Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 /// HTTP request tool configuration (`[http_request]` section).
 ///
@@ -1758,7 +1639,7 @@ fn default_http_timeout_secs() -> u64 {
     30
 }
 
-// ── Web fetch ────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Web fetch Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 /// Web fetch tool configuration (`[web_fetch]` section).
 ///
@@ -1809,7 +1690,7 @@ impl Default for WebFetchConfig {
     }
 }
 
-// ── Text browser ─────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Text browser Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 /// Text browser tool configuration (`[text_browser]` section).
 ///
@@ -1842,7 +1723,7 @@ impl Default for TextBrowserConfig {
     }
 }
 
-// ── Web search ───────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Web search Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 /// Web search tool configuration (`[web_search]` section).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -1888,7 +1769,7 @@ impl Default for WebSearchConfig {
     }
 }
 
-// ── Project Intelligence ────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Project Intelligence Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 /// Project delivery intelligence configuration (`[project_intel]` section).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -1946,7 +1827,7 @@ impl Default for ProjectIntelConfig {
     }
 }
 
-// ── Backup ──────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Backup Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 /// Backup tool configuration (`[backup]` section).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -2009,7 +1890,7 @@ impl Default for BackupConfig {
     }
 }
 
-// ── Data Retention ──────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Data Retention Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 /// Data retention and purge configuration (`[data_retention]` section).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -2043,7 +1924,7 @@ impl Default for DataRetentionConfig {
     }
 }
 
-// ── Google Workspace ─────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Google Workspace Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 /// Built-in default service allowlist for the `google_workspace` tool.
 ///
@@ -2210,7 +2091,7 @@ impl Default for GoogleWorkspaceConfig {
     }
 }
 
-// ── Knowledge ───────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Knowledge Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 /// Knowledge graph configuration for capturing and reusing expertise.
 #[allow(clippy::struct_excessive_bools)]
@@ -2260,7 +2141,7 @@ impl Default for KnowledgeConfig {
     }
 }
 
-// ── LinkedIn ────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ LinkedIn Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 /// LinkedIn integration configuration (`[linkedin]` section).
 ///
@@ -2581,12 +2462,12 @@ impl Default for ImageProviderFluxConfig {
     }
 }
 
-// ── Claude Code ─────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Claude Code Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 /// Claude Code CLI tool configuration (`[claude_code]` section).
 ///
 /// Delegates coding tasks to the `claude -p` CLI. Authentication uses the
-/// binary's own OAuth session (Max subscription) by default — no API key
+/// binary's own OAuth session (Max subscription) by default Ã¢â‚¬â€ no API key
 /// needed unless `env_passthrough` includes `ANTHROPIC_API_KEY`.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ClaudeCodeConfig {
@@ -2633,296 +2514,6 @@ impl Default for ClaudeCodeConfig {
             env_passthrough: Vec::new(),
         }
     }
-}
-
-// ── Proxy ───────────────────────────────────────────────────────
-
-/// Proxy application scope — determines which outbound traffic uses the proxy.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum ProxyScope {
-    /// Use system environment proxy variables only.
-    Environment,
-    /// Apply proxy to all R.A.I.N.-managed HTTP traffic (default).
-    #[default]
-    Rain,
-    /// Apply proxy only to explicitly listed service selectors.
-    Services,
-}
-
-/// Proxy configuration for outbound HTTP/HTTPS/SOCKS5 traffic (`[proxy]` section).
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct ProxyConfig {
-    /// Enable proxy support for selected scope.
-    #[serde(default)]
-    pub enabled: bool,
-    /// Proxy URL for HTTP requests (supports http, https, socks5, socks5h).
-    #[serde(default)]
-    pub http_proxy: Option<String>,
-    /// Proxy URL for HTTPS requests (supports http, https, socks5, socks5h).
-    #[serde(default)]
-    pub https_proxy: Option<String>,
-    /// Fallback proxy URL for all schemes.
-    #[serde(default)]
-    pub all_proxy: Option<String>,
-    /// No-proxy bypass list. Same format as NO_PROXY.
-    #[serde(default)]
-    pub no_proxy: Vec<String>,
-    /// Proxy application scope.
-    #[serde(default)]
-    pub scope: ProxyScope,
-    /// Service selectors used when scope = "services".
-    #[serde(default)]
-    pub services: Vec<String>,
-}
-
-impl Default for ProxyConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            http_proxy: None,
-            https_proxy: None,
-            all_proxy: None,
-            no_proxy: Vec::new(),
-            scope: ProxyScope::Rain,
-            services: Vec::new(),
-        }
-    }
-}
-
-impl ProxyConfig {
-    pub fn supported_service_keys() -> &'static [&'static str] {
-        SUPPORTED_PROXY_SERVICE_KEYS
-    }
-
-    pub fn supported_service_selectors() -> &'static [&'static str] {
-        SUPPORTED_PROXY_SERVICE_SELECTORS
-    }
-
-    pub fn has_any_proxy_url(&self) -> bool {
-        normalize_proxy_url_option(self.http_proxy.as_deref()).is_some()
-            || normalize_proxy_url_option(self.https_proxy.as_deref()).is_some()
-            || normalize_proxy_url_option(self.all_proxy.as_deref()).is_some()
-    }
-
-    pub fn normalized_services(&self) -> Vec<String> {
-        normalize_service_list(self.services.clone())
-    }
-
-    pub fn normalized_no_proxy(&self) -> Vec<String> {
-        normalize_no_proxy_list(self.no_proxy.clone())
-    }
-
-    pub fn validate(&self) -> Result<()> {
-        for (field, value) in [
-            ("http_proxy", self.http_proxy.as_deref()),
-            ("https_proxy", self.https_proxy.as_deref()),
-            ("all_proxy", self.all_proxy.as_deref()),
-        ] {
-            if let Some(url) = normalize_proxy_url_option(value) {
-                validate_proxy_url(field, &url)?;
-            }
-        }
-
-        for selector in self.normalized_services() {
-            if !is_supported_proxy_service_selector(&selector) {
-                anyhow::bail!(
-                    "Unsupported proxy service selector '{selector}'. Use tool `proxy_config` action `list_services` for valid values"
-                );
-            }
-        }
-
-        if self.enabled && !self.has_any_proxy_url() {
-            anyhow::bail!(
-                "Proxy is enabled but no proxy URL is configured. Set at least one of http_proxy, https_proxy, or all_proxy"
-            );
-        }
-
-        if self.enabled
-            && self.scope == ProxyScope::Services
-            && self.normalized_services().is_empty()
-        {
-            anyhow::bail!(
-                "proxy.scope='services' requires a non-empty proxy.services list when proxy is enabled"
-            );
-        }
-
-        Ok(())
-    }
-
-    pub fn should_apply_to_service(&self, service_key: &str) -> bool {
-        if !self.enabled {
-            return false;
-        }
-
-        match self.scope {
-            ProxyScope::Environment => false,
-            ProxyScope::Rain => true,
-            ProxyScope::Services => {
-                let service_key = service_key.trim().to_ascii_lowercase();
-                if service_key.is_empty() {
-                    return false;
-                }
-
-                self.normalized_services()
-                    .iter()
-                    .any(|selector| service_selector_matches(selector, &service_key))
-            }
-        }
-    }
-
-    pub fn apply_to_reqwest_builder(
-        &self,
-        mut builder: reqwest::ClientBuilder,
-        service_key: &str,
-    ) -> reqwest::ClientBuilder {
-        if !self.should_apply_to_service(service_key) {
-            return builder;
-        }
-
-        let no_proxy = self.no_proxy_value();
-
-        if let Some(url) = normalize_proxy_url_option(self.all_proxy.as_deref()) {
-            match reqwest::Proxy::all(&url) {
-                Ok(proxy) => {
-                    builder = builder.proxy(apply_no_proxy(proxy, no_proxy.clone()));
-                }
-                Err(error) => {
-                    tracing::warn!(
-                        proxy_url = %url,
-                        service_key,
-                        "Ignoring invalid all_proxy URL: {error}"
-                    );
-                }
-            }
-        }
-
-        if let Some(url) = normalize_proxy_url_option(self.http_proxy.as_deref()) {
-            match reqwest::Proxy::http(&url) {
-                Ok(proxy) => {
-                    builder = builder.proxy(apply_no_proxy(proxy, no_proxy.clone()));
-                }
-                Err(error) => {
-                    tracing::warn!(
-                        proxy_url = %url,
-                        service_key,
-                        "Ignoring invalid http_proxy URL: {error}"
-                    );
-                }
-            }
-        }
-
-        if let Some(url) = normalize_proxy_url_option(self.https_proxy.as_deref()) {
-            match reqwest::Proxy::https(&url) {
-                Ok(proxy) => {
-                    builder = builder.proxy(apply_no_proxy(proxy, no_proxy));
-                }
-                Err(error) => {
-                    tracing::warn!(
-                        proxy_url = %url,
-                        service_key,
-                        "Ignoring invalid https_proxy URL: {error}"
-                    );
-                }
-            }
-        }
-
-        builder
-    }
-
-    pub fn apply_to_process_env(&self) {
-        set_proxy_env_pair("HTTP_PROXY", self.http_proxy.as_deref());
-        set_proxy_env_pair("HTTPS_PROXY", self.https_proxy.as_deref());
-        set_proxy_env_pair("ALL_PROXY", self.all_proxy.as_deref());
-
-        let no_proxy_joined = {
-            let list = self.normalized_no_proxy();
-            (!list.is_empty()).then(|| list.join(","))
-        };
-        set_proxy_env_pair("NO_PROXY", no_proxy_joined.as_deref());
-    }
-
-    pub fn clear_process_env() {
-        clear_proxy_env_pair("HTTP_PROXY");
-        clear_proxy_env_pair("HTTPS_PROXY");
-        clear_proxy_env_pair("ALL_PROXY");
-        clear_proxy_env_pair("NO_PROXY");
-    }
-
-    fn no_proxy_value(&self) -> Option<reqwest::NoProxy> {
-        let joined = {
-            let list = self.normalized_no_proxy();
-            (!list.is_empty()).then(|| list.join(","))
-        };
-        joined.as_deref().and_then(reqwest::NoProxy::from_string)
-    }
-}
-
-fn apply_no_proxy(proxy: reqwest::Proxy, no_proxy: Option<reqwest::NoProxy>) -> reqwest::Proxy {
-    proxy.no_proxy(no_proxy)
-}
-
-fn normalize_proxy_url_option(raw: Option<&str>) -> Option<String> {
-    let value = raw?.trim();
-    (!value.is_empty()).then(|| value.to_string())
-}
-
-fn normalize_no_proxy_list(values: Vec<String>) -> Vec<String> {
-    normalize_comma_values(values)
-}
-
-fn normalize_service_list(values: Vec<String>) -> Vec<String> {
-    let mut normalized = normalize_comma_values(values)
-        .into_iter()
-        .map(|value| value.to_ascii_lowercase())
-        .collect::<Vec<_>>();
-    normalized.sort_unstable();
-    normalized.dedup();
-    normalized
-}
-
-fn normalize_comma_values(values: Vec<String>) -> Vec<String> {
-    let mut output = Vec::new();
-    for value in values {
-        for part in value.split(',') {
-            let normalized = part.trim();
-            if normalized.is_empty() {
-                continue;
-            }
-            output.push(normalized.to_string());
-        }
-    }
-    output.sort_unstable();
-    output.dedup();
-    output
-}
-
-fn is_supported_proxy_service_selector(selector: &str) -> bool {
-    if SUPPORTED_PROXY_SERVICE_KEYS
-        .iter()
-        .any(|known| known.eq_ignore_ascii_case(selector))
-    {
-        return true;
-    }
-
-    SUPPORTED_PROXY_SERVICE_SELECTORS
-        .iter()
-        .any(|known| known.eq_ignore_ascii_case(selector))
-}
-
-fn service_selector_matches(selector: &str, service_key: &str) -> bool {
-    if selector == service_key {
-        return true;
-    }
-
-    if let Some(prefix) = selector.strip_suffix(".*") {
-        return service_key.starts_with(prefix)
-            && service_key
-                .strip_prefix(prefix)
-                .is_some_and(|suffix| suffix.starts_with('.'));
-    }
-
-    false
 }
 
 const MCP_MAX_TOOL_TIMEOUT_SECS: u64 = 600;
@@ -2984,364 +2575,7 @@ fn validate_mcp_config(config: &McpConfig) -> Result<()> {
     Ok(())
 }
 
-fn validate_proxy_url(field: &str, url: &str) -> Result<()> {
-    let parsed = reqwest::Url::parse(url)
-        .with_context(|| format!("Invalid {field} URL: '{url}' is not a valid URL"))?;
-
-    match parsed.scheme() {
-        "http" | "https" | "socks5" | "socks5h" | "socks" => {}
-        scheme => {
-            anyhow::bail!(
-                "Invalid {field} URL scheme '{scheme}'. Allowed: http, https, socks5, socks5h, socks"
-            );
-        }
-    }
-
-    if parsed.host_str().is_none() {
-        anyhow::bail!("Invalid {field} URL: host is required");
-    }
-
-    Ok(())
-}
-
-fn set_proxy_env_pair(key: &str, value: Option<&str>) {
-    let lowercase_key = key.to_ascii_lowercase();
-    if let Some(value) = value.and_then(|candidate| normalize_proxy_url_option(Some(candidate))) {
-        std::env::set_var(key, &value);
-        std::env::set_var(lowercase_key, value);
-    } else {
-        std::env::remove_var(key);
-        std::env::remove_var(lowercase_key);
-    }
-}
-
-fn clear_proxy_env_pair(key: &str) {
-    std::env::remove_var(key);
-    std::env::remove_var(key.to_ascii_lowercase());
-}
-
-fn set_runtime_proxy_meta_env(key: &str, value: Option<&str>) {
-    if let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) {
-        std::env::set_var(key, value);
-    } else {
-        std::env::remove_var(key);
-    }
-}
-
-fn sync_runtime_proxy_env(config: &ProxyConfig) {
-    set_runtime_proxy_meta_env(
-        "rain_PROXY_ENABLED",
-        Some(if config.enabled { "true" } else { "false" }),
-    );
-    set_runtime_proxy_meta_env("rain_HTTP_PROXY", config.http_proxy.as_deref());
-    set_runtime_proxy_meta_env("rain_HTTPS_PROXY", config.https_proxy.as_deref());
-    set_runtime_proxy_meta_env("rain_ALL_PROXY", config.all_proxy.as_deref());
-    let no_proxy = config.normalized_no_proxy();
-    let services = config.normalized_services();
-    set_runtime_proxy_meta_env(
-        "rain_NO_PROXY",
-        (!no_proxy.is_empty())
-            .then(|| no_proxy.join(","))
-            .as_deref(),
-    );
-    let scope = match config.scope {
-        ProxyScope::Environment => "environment",
-        ProxyScope::Rain => "rain",
-        ProxyScope::Services => "services",
-    };
-    set_runtime_proxy_meta_env("rain_PROXY_SCOPE", Some(scope));
-    set_runtime_proxy_meta_env(
-        "rain_PROXY_SERVICES",
-        (!services.is_empty())
-            .then(|| services.join(","))
-            .as_deref(),
-    );
-
-    if config.enabled && config.scope == ProxyScope::Environment {
-        config.apply_to_process_env();
-    } else {
-        ProxyConfig::clear_process_env();
-    }
-}
-
-fn env_runtime_proxy_config() -> ProxyConfig {
-    let mut proxy = ProxyConfig::default();
-    let explicit_proxy_enabled = std::env::var("rain_PROXY_ENABLED")
-        .ok()
-        .as_deref()
-        .and_then(parse_proxy_enabled);
-    if let Some(enabled) = explicit_proxy_enabled {
-        proxy.enabled = enabled;
-    }
-
-    let mut proxy_url_overridden = false;
-    if let Ok(proxy_url) = std::env::var("rain_HTTP_PROXY").or_else(|_| std::env::var("HTTP_PROXY"))
-    {
-        proxy.http_proxy = normalize_proxy_url_option(Some(&proxy_url));
-        proxy_url_overridden = true;
-    }
-    if let Ok(proxy_url) =
-        std::env::var("rain_HTTPS_PROXY").or_else(|_| std::env::var("HTTPS_PROXY"))
-    {
-        proxy.https_proxy = normalize_proxy_url_option(Some(&proxy_url));
-        proxy_url_overridden = true;
-    }
-    if let Ok(proxy_url) = std::env::var("rain_ALL_PROXY").or_else(|_| std::env::var("ALL_PROXY")) {
-        proxy.all_proxy = normalize_proxy_url_option(Some(&proxy_url));
-        proxy_url_overridden = true;
-    }
-    if let Ok(no_proxy) = std::env::var("rain_NO_PROXY").or_else(|_| std::env::var("NO_PROXY")) {
-        proxy.no_proxy = normalize_no_proxy_list(vec![no_proxy]);
-    }
-
-    if explicit_proxy_enabled.is_none() && proxy_url_overridden && proxy.has_any_proxy_url() {
-        proxy.enabled = true;
-    }
-
-    if let Ok(scope_raw) = std::env::var("rain_PROXY_SCOPE") {
-        if let Some(scope) = parse_proxy_scope(&scope_raw) {
-            proxy.scope = scope;
-        } else {
-            tracing::warn!(
-                scope = %scope_raw,
-                "Ignoring invalid rain_PROXY_SCOPE (valid: environment|R.A.I.N.|services)"
-            );
-        }
-    }
-
-    if let Ok(services_raw) = std::env::var("rain_PROXY_SERVICES") {
-        proxy.services = normalize_service_list(vec![services_raw]);
-    }
-
-    if let Err(error) = proxy.validate() {
-        tracing::warn!("Invalid proxy configuration ignored: {error}");
-        proxy.enabled = false;
-    }
-
-    proxy
-}
-
-fn clear_runtime_proxy_client_cache() {
-    if let Some(state) = current_runtime_proxy_state() {
-        state.clear_client_cache();
-    }
-}
-
-fn runtime_proxy_cache_key(
-    service_key: &str,
-    timeout_secs: Option<u64>,
-    connect_timeout_secs: Option<u64>,
-) -> String {
-    format!(
-        "{}|timeout={}|connect_timeout={}",
-        service_key.trim().to_ascii_lowercase(),
-        timeout_secs
-            .map(|value| value.to_string())
-            .unwrap_or_else(|| "none".to_string()),
-        connect_timeout_secs
-            .map(|value| value.to_string())
-            .unwrap_or_else(|| "none".to_string())
-    )
-}
-
-fn runtime_proxy_cached_client(cache_key: &str) -> Option<reqwest::Client> {
-    current_runtime_proxy_state().and_then(|state| state.cached_client(cache_key))
-}
-
-fn set_runtime_proxy_cached_client(cache_key: String, client: reqwest::Client) {
-    if let Some(state) = current_runtime_proxy_state() {
-        state.set_cached_client(cache_key, client);
-    }
-}
-
-pub fn set_runtime_proxy_config(config: ProxyConfig) {
-    if let Some(state) = current_runtime_proxy_state() {
-        state.set_config(config.clone());
-    }
-    sync_runtime_proxy_env(&config);
-}
-
-pub fn runtime_proxy_config() -> ProxyConfig {
-    current_runtime_proxy_state()
-        .map(|state| state.config())
-        .unwrap_or_else(env_runtime_proxy_config)
-}
-
-pub fn apply_runtime_proxy_to_builder(
-    builder: reqwest::ClientBuilder,
-    service_key: &str,
-) -> reqwest::ClientBuilder {
-    runtime_proxy_config().apply_to_reqwest_builder(builder, service_key)
-}
-
-pub fn build_runtime_proxy_client(service_key: &str) -> reqwest::Client {
-    let cache_key = runtime_proxy_cache_key(service_key, None, None);
-    if let Some(client) = runtime_proxy_cached_client(&cache_key) {
-        return client;
-    }
-
-    let builder = apply_runtime_proxy_to_builder(reqwest::Client::builder(), service_key);
-    let client = builder.build().unwrap_or_else(|error| {
-        tracing::warn!(service_key, "Failed to build proxied client: {error}");
-        reqwest::Client::new()
-    });
-    set_runtime_proxy_cached_client(cache_key, client.clone());
-    client
-}
-
-pub fn build_runtime_proxy_client_with_timeouts(
-    service_key: &str,
-    timeout_secs: u64,
-    connect_timeout_secs: u64,
-) -> reqwest::Client {
-    let cache_key =
-        runtime_proxy_cache_key(service_key, Some(timeout_secs), Some(connect_timeout_secs));
-    if let Some(client) = runtime_proxy_cached_client(&cache_key) {
-        return client;
-    }
-
-    let builder = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(timeout_secs))
-        .connect_timeout(std::time::Duration::from_secs(connect_timeout_secs));
-    let builder = apply_runtime_proxy_to_builder(builder, service_key);
-    let client = builder.build().unwrap_or_else(|error| {
-        tracing::warn!(
-            service_key,
-            "Failed to build proxied timeout client: {error}"
-        );
-        reqwest::Client::new()
-    });
-    set_runtime_proxy_cached_client(cache_key, client.clone());
-    client
-}
-
-/// Build an HTTP client for a channel, using an explicit per-channel proxy URL
-/// when configured.  Falls back to the global runtime proxy when `proxy_url` is
-/// `None` or empty.
-pub fn build_channel_proxy_client(service_key: &str, proxy_url: Option<&str>) -> reqwest::Client {
-    match normalize_proxy_url_option(proxy_url) {
-        Some(url) => build_explicit_proxy_client(service_key, &url, None, None),
-        None => build_runtime_proxy_client(service_key),
-    }
-}
-
-/// Build an HTTP client for a channel with custom timeouts, using an explicit
-/// per-channel proxy URL when configured.  Falls back to the global runtime
-/// proxy when `proxy_url` is `None` or empty.
-pub fn build_channel_proxy_client_with_timeouts(
-    service_key: &str,
-    proxy_url: Option<&str>,
-    timeout_secs: u64,
-    connect_timeout_secs: u64,
-) -> reqwest::Client {
-    match normalize_proxy_url_option(proxy_url) {
-        Some(url) => build_explicit_proxy_client(
-            service_key,
-            &url,
-            Some(timeout_secs),
-            Some(connect_timeout_secs),
-        ),
-        None => build_runtime_proxy_client_with_timeouts(
-            service_key,
-            timeout_secs,
-            connect_timeout_secs,
-        ),
-    }
-}
-
-/// Apply an explicit proxy URL to a `reqwest::ClientBuilder`, returning the
-/// modified builder.  Used by channels that specify a per-channel `proxy_url`.
-pub fn apply_channel_proxy_to_builder(
-    builder: reqwest::ClientBuilder,
-    service_key: &str,
-    proxy_url: Option<&str>,
-) -> reqwest::ClientBuilder {
-    match normalize_proxy_url_option(proxy_url) {
-        Some(url) => apply_explicit_proxy_to_builder(builder, service_key, &url),
-        None => apply_runtime_proxy_to_builder(builder, service_key),
-    }
-}
-
-/// Build a client with a single explicit proxy URL (http+https via `Proxy::all`).
-fn build_explicit_proxy_client(
-    service_key: &str,
-    proxy_url: &str,
-    timeout_secs: Option<u64>,
-    connect_timeout_secs: Option<u64>,
-) -> reqwest::Client {
-    let cache_key = format!(
-        "explicit|{}|{}|timeout={}|connect_timeout={}",
-        service_key.trim().to_ascii_lowercase(),
-        proxy_url,
-        timeout_secs
-            .map(|v| v.to_string())
-            .unwrap_or_else(|| "none".to_string()),
-        connect_timeout_secs
-            .map(|v| v.to_string())
-            .unwrap_or_else(|| "none".to_string()),
-    );
-    if let Some(client) = runtime_proxy_cached_client(&cache_key) {
-        return client;
-    }
-
-    let mut builder = reqwest::Client::builder();
-    if let Some(t) = timeout_secs {
-        builder = builder.timeout(std::time::Duration::from_secs(t));
-    }
-    if let Some(ct) = connect_timeout_secs {
-        builder = builder.connect_timeout(std::time::Duration::from_secs(ct));
-    }
-    builder = apply_explicit_proxy_to_builder(builder, service_key, proxy_url);
-    let client = builder.build().unwrap_or_else(|error| {
-        tracing::warn!(
-            service_key,
-            proxy_url,
-            "Failed to build channel proxy client: {error}"
-        );
-        reqwest::Client::new()
-    });
-    set_runtime_proxy_cached_client(cache_key, client.clone());
-    client
-}
-
-/// Apply a single explicit proxy URL to a builder via `Proxy::all`.
-fn apply_explicit_proxy_to_builder(
-    mut builder: reqwest::ClientBuilder,
-    service_key: &str,
-    proxy_url: &str,
-) -> reqwest::ClientBuilder {
-    match reqwest::Proxy::all(proxy_url) {
-        Ok(proxy) => {
-            builder = builder.proxy(proxy);
-        }
-        Err(error) => {
-            tracing::warn!(
-                proxy_url,
-                service_key,
-                "Ignoring invalid channel proxy_url: {error}"
-            );
-        }
-    }
-    builder
-}
-
-fn parse_proxy_scope(raw: &str) -> Option<ProxyScope> {
-    match raw.trim().to_ascii_lowercase().as_str() {
-        "environment" | "env" => Some(ProxyScope::Environment),
-        "R.A.I.N." | "internal" | "core" => Some(ProxyScope::Rain),
-        "services" | "service" => Some(ProxyScope::Services),
-        _ => None,
-    }
-}
-
-fn parse_proxy_enabled(raw: &str) -> Option<bool> {
-    match raw.trim().to_ascii_lowercase().as_str() {
-        "1" | "true" | "yes" | "on" => Some(true),
-        "0" | "false" | "no" | "off" => Some(false),
-        _ => None,
-    }
-}
-// ── Memory ───────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Memory Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 /// Persistent storage configuration (`[storage]` section).
 #[derive(Debug, Clone, Serialize, Deserialize, Default, JsonSchema)]
@@ -3547,13 +2781,13 @@ pub struct MemoryConfig {
     /// Embedding vector dimensions
     #[serde(default = "default_embedding_dims")]
     pub embedding_dimensions: usize,
-    /// Weight for vector similarity in hybrid search (0.0–1.0)
+    /// Weight for vector similarity in hybrid search (0.0Ã¢â‚¬â€œ1.0)
     #[serde(default = "default_vector_weight")]
     pub vector_weight: f64,
-    /// Weight for keyword BM25 in hybrid search (0.0–1.0)
+    /// Weight for keyword BM25 in hybrid search (0.0Ã¢â‚¬â€œ1.0)
     #[serde(default = "default_keyword_weight")]
     pub keyword_weight: f64,
-    /// Minimum hybrid score (0.0–1.0) for a memory to be included in context.
+    /// Minimum hybrid score (0.0Ã¢â‚¬â€œ1.0) for a memory to be included in context.
     /// Memories scoring below this threshold are dropped to prevent irrelevant
     /// context from bleeding into conversations. Default: 0.4
     #[serde(default = "default_min_relevance_score")]
@@ -3565,7 +2799,7 @@ pub struct MemoryConfig {
     #[serde(default = "default_chunk_size")]
     pub chunk_max_tokens: usize,
 
-    // ── Response Cache (saves tokens on repeated prompts) ──────
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Response Cache (saves tokens on repeated prompts) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     /// Enable LLM response caching to avoid paying for duplicate prompts
     #[serde(default)]
     pub response_cache_enabled: bool,
@@ -3579,7 +2813,7 @@ pub struct MemoryConfig {
     #[serde(default = "default_response_cache_hot_entries")]
     pub response_cache_hot_entries: usize,
 
-    // ── Memory Snapshot (soul backup to Markdown) ─────────────
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Memory Snapshot (soul backup to Markdown) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     /// Enable periodic export of core memories to MEMORY_SNAPSHOT.md
     #[serde(default)]
     pub snapshot_enabled: bool,
@@ -3590,19 +2824,19 @@ pub struct MemoryConfig {
     #[serde(default = "default_true")]
     pub auto_hydrate: bool,
 
-    // ── SQLite backend options ─────────────────────────────────
+    // Ã¢â€â‚¬Ã¢â€â‚¬ SQLite backend options Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     /// For sqlite backend: max seconds to wait when opening the DB (e.g. file locked).
     /// None = wait indefinitely (default). Recommended max: 300.
     #[serde(default)]
     pub sqlite_open_timeout_secs: Option<u64>,
 
-    // ── Qdrant backend options ─────────────────────────────────
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Qdrant backend options Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     /// Configuration for Qdrant vector database backend.
     /// Only used when `backend = "qdrant"`.
     #[serde(default)]
     pub qdrant: QdrantConfig,
 
-    // ── Mem0 backend options ─────────────────────────────────
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Mem0 backend options Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     /// Configuration for mem0 (OpenMemory) backend.
     /// Only used when `backend = "mem0"`.
     /// Requires `--features memory-mem0` at build time.
@@ -3688,7 +2922,7 @@ impl Default for MemoryConfig {
     }
 }
 
-// ── Observability ─────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Observability Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 /// Observability backend configuration (`[observability]` section).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -3743,7 +2977,7 @@ fn default_runtime_trace_max_entries() -> usize {
     200
 }
 
-// ── Hooks ────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Hooks Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct HooksConfig {
@@ -3796,7 +3030,7 @@ pub struct WebhookAuditConfig {
     pub tool_patterns: Vec<String>,
     /// Include tool call arguments in the audit payload. Default: `false`.
     ///
-    /// Be mindful of sensitive data — arguments may contain secrets or PII.
+    /// Be mindful of sensitive data Ã¢â‚¬â€ arguments may contain secrets or PII.
     #[serde(default)]
     pub include_args: bool,
     /// Maximum size (in bytes) of serialised arguments included in a single
@@ -3822,7 +3056,7 @@ impl Default for WebhookAuditConfig {
     }
 }
 
-// ── Autonomy / Security ──────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Autonomy / Security Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 /// Autonomy and security policy configuration (`[autonomy]` section).
 ///
@@ -3961,7 +3195,7 @@ impl Default for AutonomyConfig {
     }
 }
 
-// ── Runtime ──────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Runtime Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 /// Runtime adapter configuration (`[runtime]` section).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -4062,7 +3296,7 @@ impl Default for RuntimeConfig {
     }
 }
 
-// ── Reliability / supervision ────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Reliability / supervision Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 /// Reliability and supervision configuration (`[reliability]` section).
 ///
@@ -4140,7 +3374,7 @@ impl Default for ReliabilityConfig {
     }
 }
 
-// ── Scheduler ────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Scheduler Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 /// Scheduler configuration for periodic task execution (`[scheduler]` section).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -4178,7 +3412,7 @@ impl Default for SchedulerConfig {
     }
 }
 
-// ── Model routing ────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Model routing Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 /// Route a task hint to a specific provider + model.
 ///
@@ -4208,7 +3442,7 @@ pub struct ModelRouteConfig {
     pub api_key: Option<String>,
 }
 
-// ── Embedding routing ───────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Embedding routing Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 /// Route an embedding hint to a specific provider + model.
 ///
@@ -4238,9 +3472,9 @@ pub struct EmbeddingRouteConfig {
     pub api_key: Option<String>,
 }
 
-// ── Query Classification ─────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Query Classification Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
-/// Automatic query classification — classifies user messages by keyword/pattern
+/// Automatic query classification Ã¢â‚¬â€ classifies user messages by keyword/pattern
 /// and routes to the appropriate model hint. Disabled by default.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, JsonSchema)]
 pub struct QueryClassificationConfig {
@@ -4274,7 +3508,7 @@ pub struct ClassificationRule {
     pub priority: i32,
 }
 
-// ── Heartbeat ────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Heartbeat Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 /// Heartbeat configuration for periodic health pings (`[heartbeat]` section).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -4366,7 +3600,7 @@ impl Default for HeartbeatConfig {
     }
 }
 
-// ── Cron ────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Cron Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 /// Cron job configuration (`[cron]` section).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -4402,7 +3636,7 @@ impl Default for CronConfig {
     }
 }
 
-// ── Tunnel ──────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Tunnel Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 /// Tunnel configuration for exposing the gateway publicly (`[tunnel]` section).
 ///
@@ -4506,7 +3740,7 @@ fn default_openvpn_timeout() -> u64 {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct PinggyTunnelConfig {
-    /// Pinggy access token (optional — free tier works without one).
+    /// Pinggy access token (optional Ã¢â‚¬â€ free tier works without one).
     #[serde(default)]
     pub token: Option<String>,
     /// Server region: `"us"` (USA), `"eu"` (Europe), `"ap"` (Asia), `"br"` (South America), `"au"` (Australia), or omit for auto.
@@ -4525,1669 +3759,7 @@ pub struct CustomTunnelConfig {
     pub url_pattern: Option<String>,
 }
 
-// ── Channels ─────────────────────────────────────────────────────
-
-struct ConfigWrapper<T: ChannelConfig>(std::marker::PhantomData<T>);
-
-impl<T: ChannelConfig> ConfigWrapper<T> {
-    fn new(_: Option<&T>) -> Self {
-        Self(std::marker::PhantomData)
-    }
-}
-
-impl<T: ChannelConfig> crate::config::traits::ConfigHandle for ConfigWrapper<T> {
-    fn name(&self) -> &'static str {
-        T::name()
-    }
-    fn desc(&self) -> &'static str {
-        T::desc()
-    }
-}
-
-/// Top-level channel configurations (`[channels_config]` section).
-///
-/// Each channel sub-section (e.g. `telegram`, `discord`) is optional;
-/// setting it to `Some(...)` enables that channel.
-#[allow(clippy::struct_excessive_bools)]
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct ChannelsConfig {
-    /// Enable the CLI interactive channel. Default: `true`.
-    #[serde(default = "default_true")]
-    pub cli: bool,
-    /// Telegram bot channel configuration.
-    pub telegram: Option<TelegramConfig>,
-    /// Discord bot channel configuration.
-    pub discord: Option<DiscordConfig>,
-    /// Slack bot channel configuration.
-    pub slack: Option<SlackConfig>,
-    /// Mattermost bot channel configuration.
-    pub mattermost: Option<MattermostConfig>,
-    /// Webhook channel configuration.
-    pub webhook: Option<WebhookConfig>,
-    /// iMessage channel configuration (macOS only).
-    pub imessage: Option<IMessageConfig>,
-    /// Matrix channel configuration.
-    pub matrix: Option<MatrixConfig>,
-    /// Signal channel configuration.
-    pub signal: Option<SignalConfig>,
-    /// WhatsApp channel configuration (Cloud API or Web mode).
-    pub whatsapp: Option<WhatsAppConfig>,
-    /// Linq Partner API channel configuration.
-    pub linq: Option<LinqConfig>,
-    /// WATI WhatsApp Business API channel configuration.
-    pub wati: Option<WatiConfig>,
-    /// Nextcloud Talk bot channel configuration.
-    pub nextcloud_talk: Option<NextcloudTalkConfig>,
-    /// Email channel configuration.
-    pub email: Option<crate::channels::email_channel::EmailConfig>,
-    /// IRC channel configuration.
-    pub irc: Option<IrcConfig>,
-    /// Lark channel configuration.
-    pub lark: Option<LarkConfig>,
-    /// Feishu channel configuration.
-    pub feishu: Option<FeishuConfig>,
-    /// DingTalk channel configuration.
-    pub dingtalk: Option<DingTalkConfig>,
-    /// WeCom (WeChat Enterprise) Bot Webhook channel configuration.
-    pub wecom: Option<WeComConfig>,
-    /// QQ Official Bot channel configuration.
-    pub qq: Option<QQConfig>,
-    /// X/Twitter channel configuration.
-    pub twitter: Option<TwitterConfig>,
-    /// Mochat customer service channel configuration.
-    pub mochat: Option<MochatConfig>,
-    #[cfg(feature = "channel-nostr")]
-    pub nostr: Option<NostrConfig>,
-    /// ClawdTalk voice channel configuration.
-    pub clawdtalk: Option<crate::channels::ClawdTalkConfig>,
-    /// Reddit channel configuration (OAuth2 bot).
-    pub reddit: Option<RedditConfig>,
-    /// Bluesky channel configuration (AT Protocol).
-    pub bluesky: Option<BlueskyConfig>,
-    /// Base timeout in seconds for processing a single channel message (LLM + tools).
-    /// Runtime uses this as a per-turn budget that scales with tool-loop depth
-    /// (up to 4x, capped) so one slow/retried model call does not consume the
-    /// entire conversation budget.
-    /// Default: 300s for on-device LLMs (Ollama) which are slower than cloud APIs.
-    #[serde(default = "default_channel_message_timeout_secs")]
-    pub message_timeout_secs: u64,
-    /// Whether to add acknowledgement reactions (👀 on receipt, ✅/⚠️ on
-    /// completion) to incoming channel messages. Default: `true`.
-    #[serde(default = "default_true")]
-    pub ack_reactions: bool,
-    /// Whether to send tool-call notification messages (e.g. `🔧 web_search_tool: …`)
-    /// to channel users. When `false`, tool calls are still logged server-side but
-    /// not forwarded as individual channel messages. Default: `false`.
-    #[serde(default = "default_false")]
-    pub show_tool_calls: bool,
-    /// Persist channel conversation history to JSONL files so sessions survive
-    /// daemon restarts. Files are stored in `{workspace}/sessions/`. Default: `true`.
-    #[serde(default = "default_true")]
-    pub session_persistence: bool,
-    /// Session persistence backend: `"jsonl"` (legacy) or `"sqlite"` (new default).
-    /// SQLite provides FTS5 search, metadata tracking, and TTL cleanup.
-    #[serde(default = "default_session_backend")]
-    pub session_backend: String,
-    /// Auto-archive stale sessions older than this many hours. `0` disables. Default: `0`.
-    #[serde(default)]
-    pub session_ttl_hours: u32,
-}
-
-impl ChannelsConfig {
-    /// get channels' metadata and `.is_some()`, except webhook
-    #[rustfmt::skip]
-    pub fn channels_except_webhook(&self) -> Vec<(Box<dyn super::traits::ConfigHandle>, bool)> {
-        vec![
-            (
-                Box::new(ConfigWrapper::new(self.telegram.as_ref())),
-                self.telegram.is_some(),
-            ),
-            (
-                Box::new(ConfigWrapper::new(self.discord.as_ref())),
-                self.discord.is_some(),
-            ),
-            (
-                Box::new(ConfigWrapper::new(self.slack.as_ref())),
-                self.slack.is_some(),
-            ),
-            (
-                Box::new(ConfigWrapper::new(self.mattermost.as_ref())),
-                self.mattermost.is_some(),
-            ),
-            (
-                Box::new(ConfigWrapper::new(self.imessage.as_ref())),
-                self.imessage.is_some(),
-            ),
-            (
-                Box::new(ConfigWrapper::new(self.matrix.as_ref())),
-                self.matrix.is_some(),
-            ),
-            (
-                Box::new(ConfigWrapper::new(self.signal.as_ref())),
-                self.signal.is_some(),
-            ),
-            (
-                Box::new(ConfigWrapper::new(self.whatsapp.as_ref())),
-                self.whatsapp.is_some(),
-            ),
-            (
-                Box::new(ConfigWrapper::new(self.linq.as_ref())),
-                self.linq.is_some(),
-            ),
-            (
-                Box::new(ConfigWrapper::new(self.wati.as_ref())),
-                self.wati.is_some(),
-            ),
-            (
-                Box::new(ConfigWrapper::new(self.nextcloud_talk.as_ref())),
-                self.nextcloud_talk.is_some(),
-            ),
-            (
-                Box::new(ConfigWrapper::new(self.email.as_ref())),
-                self.email.is_some(),
-            ),
-            (
-                Box::new(ConfigWrapper::new(self.irc.as_ref())),
-                self.irc.is_some()
-            ),
-            (
-                Box::new(ConfigWrapper::new(self.lark.as_ref())),
-                self.lark.is_some(),
-            ),
-            (
-                Box::new(ConfigWrapper::new(self.feishu.as_ref())),
-                self.feishu.is_some(),
-            ),
-            (
-                Box::new(ConfigWrapper::new(self.dingtalk.as_ref())),
-                self.dingtalk.is_some(),
-            ),
-            (
-                Box::new(ConfigWrapper::new(self.wecom.as_ref())),
-                self.wecom.is_some(),
-            ),
-            (
-                Box::new(ConfigWrapper::new(self.qq.as_ref())),
-                self.qq.is_some()
-            ),
-            #[cfg(feature = "channel-nostr")]
-            (
-                Box::new(ConfigWrapper::new(self.nostr.as_ref())),
-                self.nostr.is_some(),
-            ),
-            (
-                Box::new(ConfigWrapper::new(self.clawdtalk.as_ref())),
-                self.clawdtalk.is_some(),
-            ),
-            (
-                Box::new(ConfigWrapper::new(self.reddit.as_ref())),
-                self.reddit.is_some(),
-            ),
-            (
-                Box::new(ConfigWrapper::new(self.bluesky.as_ref())),
-                self.bluesky.is_some(),
-            ),
-        ]
-    }
-
-    pub fn channels(&self) -> Vec<(Box<dyn super::traits::ConfigHandle>, bool)> {
-        let mut ret = self.channels_except_webhook();
-        ret.push((
-            Box::new(ConfigWrapper::new(self.webhook.as_ref())),
-            self.webhook.is_some(),
-        ));
-        ret
-    }
-}
-
-fn default_channel_message_timeout_secs() -> u64 {
-    300
-}
-
-fn default_session_backend() -> String {
-    "sqlite".into()
-}
-
-impl Default for ChannelsConfig {
-    fn default() -> Self {
-        Self {
-            cli: true,
-            telegram: None,
-            discord: None,
-            slack: None,
-            mattermost: None,
-            webhook: None,
-            imessage: None,
-            matrix: None,
-            signal: None,
-            whatsapp: None,
-            linq: None,
-            wati: None,
-            nextcloud_talk: None,
-            email: None,
-            irc: None,
-            lark: None,
-            feishu: None,
-            dingtalk: None,
-            wecom: None,
-            qq: None,
-            twitter: None,
-            mochat: None,
-            #[cfg(feature = "channel-nostr")]
-            nostr: None,
-            clawdtalk: None,
-            reddit: None,
-            bluesky: None,
-            message_timeout_secs: default_channel_message_timeout_secs(),
-            ack_reactions: true,
-            show_tool_calls: false,
-            session_persistence: true,
-            session_backend: default_session_backend(),
-            session_ttl_hours: 0,
-        }
-    }
-}
-
-/// Streaming mode for channels that support progressive message updates.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default, JsonSchema)]
-#[serde(rename_all = "lowercase")]
-pub enum StreamMode {
-    /// No streaming -- send the complete response as a single message (default).
-    #[default]
-    Off,
-    /// Update a draft message with every flush interval.
-    Partial,
-}
-
-fn default_draft_update_interval_ms() -> u64 {
-    1000
-}
-
-/// Telegram bot channel configuration.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct TelegramConfig {
-    /// Telegram Bot API token (from @BotFather).
-    pub bot_token: String,
-    /// Allowed Telegram user IDs or usernames. Empty = deny all.
-    pub allowed_users: Vec<String>,
-    /// Streaming mode for progressive response delivery via message edits.
-    #[serde(default)]
-    pub stream_mode: StreamMode,
-    /// Minimum interval (ms) between draft message edits to avoid rate limits.
-    #[serde(default = "default_draft_update_interval_ms")]
-    pub draft_update_interval_ms: u64,
-    /// When true, a newer Telegram message from the same sender in the same chat
-    /// cancels the in-flight request and starts a fresh response with preserved history.
-    #[serde(default)]
-    pub interrupt_on_new_message: bool,
-    /// When true, only respond to messages that @-mention the bot in groups.
-    /// Direct messages are always processed.
-    #[serde(default)]
-    pub mention_only: bool,
-    /// Override for the top-level `ack_reactions` setting. When `None`, the
-    /// channel falls back to `[channels_config].ack_reactions`. When set
-    /// explicitly, it takes precedence.
-    #[serde(default)]
-    pub ack_reactions: Option<bool>,
-    /// Per-channel proxy URL (http, https, socks5, socks5h).
-    /// Overrides the global `[proxy]` setting for this channel only.
-    #[serde(default)]
-    pub proxy_url: Option<String>,
-}
-
-impl ChannelConfig for TelegramConfig {
-    fn name() -> &'static str {
-        "Telegram"
-    }
-    fn desc() -> &'static str {
-        "connect your bot"
-    }
-}
-
-/// Discord bot channel configuration.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct DiscordConfig {
-    /// Discord bot token (from Discord Developer Portal).
-    pub bot_token: String,
-    /// Optional guild (server) ID to restrict the bot to a single guild.
-    pub guild_id: Option<String>,
-    /// Allowed Discord user IDs. Empty = deny all.
-    #[serde(default)]
-    pub allowed_users: Vec<String>,
-    /// When true, process messages from other bots (not just humans).
-    /// The bot still ignores its own messages to prevent feedback loops.
-    #[serde(default)]
-    pub listen_to_bots: bool,
-    /// When true, a newer Discord message from the same sender in the same channel
-    /// cancels the in-flight request and starts a fresh response with preserved history.
-    #[serde(default)]
-    pub interrupt_on_new_message: bool,
-    /// When true, only respond to messages that @-mention the bot.
-    /// Other messages in the guild are silently ignored.
-    #[serde(default)]
-    pub mention_only: bool,
-    /// Per-channel proxy URL (http, https, socks5, socks5h).
-    /// Overrides the global `[proxy]` setting for this channel only.
-    #[serde(default)]
-    pub proxy_url: Option<String>,
-}
-
-impl ChannelConfig for DiscordConfig {
-    fn name() -> &'static str {
-        "Discord"
-    }
-    fn desc() -> &'static str {
-        "connect your bot"
-    }
-}
-
-/// Slack bot channel configuration.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct SlackConfig {
-    /// Slack bot OAuth token (xoxb-...).
-    pub bot_token: String,
-    /// Slack app-level token for Socket Mode (xapp-...).
-    pub app_token: Option<String>,
-    /// Optional channel ID to restrict the bot to a single channel.
-    /// Omit (or set `"*"`) to listen across all accessible channels.
-    pub channel_id: Option<String>,
-    /// Allowed Slack user IDs. Empty = deny all.
-    #[serde(default)]
-    pub allowed_users: Vec<String>,
-    /// When true, a newer Slack message from the same sender in the same channel
-    /// cancels the in-flight request and starts a fresh response with preserved history.
-    #[serde(default)]
-    pub interrupt_on_new_message: bool,
-    /// When true (default), replies stay in the originating Slack thread.
-    /// When false, replies go to the channel root instead.
-    #[serde(default)]
-    pub thread_replies: Option<bool>,
-    /// When true, only respond to messages that @-mention the bot in groups.
-    /// Direct messages remain allowed.
-    #[serde(default)]
-    pub mention_only: bool,
-    /// Per-channel proxy URL (http, https, socks5, socks5h).
-    /// Overrides the global `[proxy]` setting for this channel only.
-    #[serde(default)]
-    pub proxy_url: Option<String>,
-}
-
-impl ChannelConfig for SlackConfig {
-    fn name() -> &'static str {
-        "Slack"
-    }
-    fn desc() -> &'static str {
-        "connect your bot"
-    }
-}
-
-/// Mattermost bot channel configuration.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct MattermostConfig {
-    /// Mattermost server URL (e.g. `"https://mattermost.example.com"`).
-    pub url: String,
-    /// Mattermost bot access token.
-    pub bot_token: String,
-    /// Optional channel ID to restrict the bot to a single channel.
-    pub channel_id: Option<String>,
-    /// Allowed Mattermost user IDs. Empty = deny all.
-    #[serde(default)]
-    pub allowed_users: Vec<String>,
-    /// When true (default), replies thread on the original post.
-    /// When false, replies go to the channel root.
-    #[serde(default)]
-    pub thread_replies: Option<bool>,
-    /// When true, only respond to messages that @-mention the bot.
-    /// Other messages in the channel are silently ignored.
-    #[serde(default)]
-    pub mention_only: Option<bool>,
-    /// When true, a newer Mattermost message from the same sender in the same channel
-    /// cancels the in-flight request and starts a fresh response with preserved history.
-    #[serde(default)]
-    pub interrupt_on_new_message: bool,
-    /// Per-channel proxy URL (http, https, socks5, socks5h).
-    /// Overrides the global `[proxy]` setting for this channel only.
-    #[serde(default)]
-    pub proxy_url: Option<String>,
-}
-
-impl ChannelConfig for MattermostConfig {
-    fn name() -> &'static str {
-        "Mattermost"
-    }
-    fn desc() -> &'static str {
-        "connect to your bot"
-    }
-}
-
-/// Webhook channel configuration.
-///
-/// Receives messages via HTTP POST and sends replies to a configurable outbound URL.
-/// This is the "universal adapter" for any system that supports webhooks.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct WebhookConfig {
-    /// Port to listen on for incoming webhooks.
-    pub port: u16,
-    /// URL path to listen on (default: `/webhook`).
-    #[serde(default)]
-    pub listen_path: Option<String>,
-    /// URL to POST/PUT outbound messages to.
-    #[serde(default)]
-    pub send_url: Option<String>,
-    /// HTTP method for outbound messages (`POST` or `PUT`). Default: `POST`.
-    #[serde(default)]
-    pub send_method: Option<String>,
-    /// Optional `Authorization` header value for outbound requests.
-    #[serde(default)]
-    pub auth_header: Option<String>,
-    /// Optional shared secret for webhook signature verification (HMAC-SHA256).
-    pub secret: Option<String>,
-}
-
-impl ChannelConfig for WebhookConfig {
-    fn name() -> &'static str {
-        "Webhook"
-    }
-    fn desc() -> &'static str {
-        "HTTP endpoint"
-    }
-}
-
-/// iMessage channel configuration (macOS only).
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct IMessageConfig {
-    /// Allowed iMessage contacts (phone numbers or email addresses). Empty = deny all.
-    pub allowed_contacts: Vec<String>,
-}
-
-impl ChannelConfig for IMessageConfig {
-    fn name() -> &'static str {
-        "iMessage"
-    }
-    fn desc() -> &'static str {
-        "macOS only"
-    }
-}
-
-/// Matrix channel configuration.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct MatrixConfig {
-    /// Matrix homeserver URL (e.g. `"https://matrix.org"`).
-    pub homeserver: String,
-    /// Matrix access token for the bot account.
-    pub access_token: String,
-    /// Optional Matrix user ID (e.g. `"@bot:matrix.org"`).
-    #[serde(default)]
-    pub user_id: Option<String>,
-    /// Optional Matrix device ID.
-    #[serde(default)]
-    pub device_id: Option<String>,
-    /// Matrix room ID to listen in (e.g. `"!abc123:matrix.org"`).
-    pub room_id: String,
-    /// Allowed Matrix user IDs. Empty = deny all.
-    pub allowed_users: Vec<String>,
-    /// Whether to interrupt an in-flight agent response when a new message arrives.
-    #[serde(default)]
-    pub interrupt_on_new_message: bool,
-}
-
-impl ChannelConfig for MatrixConfig {
-    fn name() -> &'static str {
-        "Matrix"
-    }
-    fn desc() -> &'static str {
-        "self-hosted chat"
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct SignalConfig {
-    /// Base URL for the signal-cli HTTP daemon (e.g. "http://127.0.0.1:8686").
-    pub http_url: String,
-    /// E.164 phone number of the signal-cli account (e.g. "+1234567890").
-    pub account: String,
-    /// Optional group ID to filter messages.
-    /// - `None` or omitted: accept all messages (DMs and groups)
-    /// - `"dm"`: only accept direct messages
-    /// - Specific group ID: only accept messages from that group
-    #[serde(default)]
-    pub group_id: Option<String>,
-    /// Allowed sender phone numbers (E.164) or "*" for all.
-    #[serde(default)]
-    pub allowed_from: Vec<String>,
-    /// Skip messages that are attachment-only (no text body).
-    #[serde(default)]
-    pub ignore_attachments: bool,
-    /// Skip incoming story messages.
-    #[serde(default)]
-    pub ignore_stories: bool,
-    /// Per-channel proxy URL (http, https, socks5, socks5h).
-    /// Overrides the global `[proxy]` setting for this channel only.
-    #[serde(default)]
-    pub proxy_url: Option<String>,
-}
-
-impl ChannelConfig for SignalConfig {
-    fn name() -> &'static str {
-        "Signal"
-    }
-    fn desc() -> &'static str {
-        "An open-source, encrypted messaging service"
-    }
-}
-
-/// WhatsApp Web usage mode.
-///
-/// `Personal` treats the account as a personal phone — the bot only responds to
-/// incoming messages that pass the DM/group/self-chat policy filters.
-/// `Business` (default) responds to all incoming messages, subject only to the
-/// `allowed_numbers` allowlist.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum WhatsAppWebMode {
-    /// Respond to all messages passing the allowlist (default).
-    #[default]
-    Business,
-    /// Apply per-chat-type policies (dm_policy, group_policy, self_chat_mode).
-    Personal,
-}
-
-/// Policy for a particular WhatsApp chat type (DMs or groups) when
-/// `mode = "personal"`.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum WhatsAppChatPolicy {
-    /// Only respond to senders on the `allowed_numbers` list (default).
-    #[default]
-    Allowlist,
-    /// Ignore all messages in this chat type.
-    Ignore,
-    /// Respond to every message regardless of allowlist.
-    All,
-}
-
-/// WhatsApp channel configuration (Cloud API or Web mode).
-///
-/// Set `phone_number_id` for Cloud API mode, or `session_path` for Web mode.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct WhatsAppConfig {
-    /// Access token from Meta Business Suite (Cloud API mode)
-    #[serde(default)]
-    pub access_token: Option<String>,
-    /// Phone number ID from Meta Business API (Cloud API mode)
-    #[serde(default)]
-    pub phone_number_id: Option<String>,
-    /// Webhook verify token (you define this, Meta sends it back for verification)
-    /// Only used in Cloud API mode
-    #[serde(default)]
-    pub verify_token: Option<String>,
-    /// App secret from Meta Business Suite (for webhook signature verification)
-    /// Can also be set via `rain_WHATSAPP_APP_SECRET` environment variable
-    /// Only used in Cloud API mode
-    #[serde(default)]
-    pub app_secret: Option<String>,
-    /// Session database path for WhatsApp Web client (Web mode)
-    /// When set, enables native WhatsApp Web mode with wa-rs
-    #[serde(default)]
-    pub session_path: Option<String>,
-    /// Phone number for pair code linking (Web mode, optional)
-    /// Format: country code + number (e.g., "15551234567")
-    /// If not set, QR code pairing will be used
-    #[serde(default)]
-    pub pair_phone: Option<String>,
-    /// Custom pair code for linking (Web mode, optional)
-    /// Leave empty to let WhatsApp generate one
-    #[serde(default)]
-    pub pair_code: Option<String>,
-    /// Allowed phone numbers (E.164 format: +1234567890) or "*" for all
-    #[serde(default)]
-    pub allowed_numbers: Vec<String>,
-    /// Usage mode for WhatsApp Web: "business" (default) or "personal".
-    /// In personal mode the bot applies dm_policy, group_policy, and
-    /// self_chat_mode to decide which chats to respond in.
-    #[serde(default)]
-    pub mode: WhatsAppWebMode,
-    /// Policy for direct messages when mode = "personal".
-    /// "allowlist" (default) | "ignore" | "all".
-    #[serde(default)]
-    pub dm_policy: WhatsAppChatPolicy,
-    /// Policy for group chats when mode = "personal".
-    /// "allowlist" (default) | "ignore" | "all".
-    #[serde(default)]
-    pub group_policy: WhatsAppChatPolicy,
-    /// When true and mode = "personal", always respond to messages in the
-    /// user's own self-chat (Notes to Self). Defaults to false.
-    #[serde(default)]
-    pub self_chat_mode: bool,
-    /// Per-channel proxy URL (http, https, socks5, socks5h).
-    /// Overrides the global `[proxy]` setting for this channel only.
-    #[serde(default)]
-    pub proxy_url: Option<String>,
-}
-
-impl ChannelConfig for WhatsAppConfig {
-    fn name() -> &'static str {
-        "WhatsApp"
-    }
-    fn desc() -> &'static str {
-        "Business Cloud API"
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct LinqConfig {
-    /// Linq Partner API token (Bearer auth)
-    pub api_token: String,
-    /// Phone number to send from (E.164 format)
-    pub from_phone: String,
-    /// Webhook signing secret for signature verification
-    #[serde(default)]
-    pub signing_secret: Option<String>,
-    /// Allowed sender handles (phone numbers) or "*" for all
-    #[serde(default)]
-    pub allowed_senders: Vec<String>,
-}
-
-impl ChannelConfig for LinqConfig {
-    fn name() -> &'static str {
-        "Linq"
-    }
-    fn desc() -> &'static str {
-        "iMessage/RCS/SMS via Linq API"
-    }
-}
-
-/// WATI WhatsApp Business API channel configuration.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct WatiConfig {
-    /// WATI API token (Bearer auth).
-    pub api_token: String,
-    /// WATI API base URL (default: https://live-mt-server.wati.io).
-    #[serde(default = "default_wati_api_url")]
-    pub api_url: String,
-    /// Tenant ID for multi-channel setups (optional).
-    #[serde(default)]
-    pub tenant_id: Option<String>,
-    /// Allowed phone numbers (E.164 format) or "*" for all.
-    #[serde(default)]
-    pub allowed_numbers: Vec<String>,
-    /// Per-channel proxy URL (http, https, socks5, socks5h).
-    /// Overrides the global `[proxy]` setting for this channel only.
-    #[serde(default)]
-    pub proxy_url: Option<String>,
-}
-
-fn default_wati_api_url() -> String {
-    "https://live-mt-server.wati.io".to_string()
-}
-
-impl ChannelConfig for WatiConfig {
-    fn name() -> &'static str {
-        "WATI"
-    }
-    fn desc() -> &'static str {
-        "WhatsApp via WATI Business API"
-    }
-}
-
-/// Nextcloud Talk bot configuration (webhook receive + OCS send API).
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct NextcloudTalkConfig {
-    /// Nextcloud base URL (e.g. "https://cloud.example.com").
-    pub base_url: String,
-    /// Bot app token used for OCS API bearer auth.
-    pub app_token: String,
-    /// Shared secret for webhook signature verification.
-    ///
-    /// Can also be set via `rain_NEXTCLOUD_TALK_WEBHOOK_SECRET`.
-    #[serde(default)]
-    pub webhook_secret: Option<String>,
-    /// Allowed Nextcloud actor IDs (`[]` = deny all, `"*"` = allow all).
-    #[serde(default)]
-    pub allowed_users: Vec<String>,
-    /// Per-channel proxy URL (http, https, socks5, socks5h).
-    /// Overrides the global `[proxy]` setting for this channel only.
-    #[serde(default)]
-    pub proxy_url: Option<String>,
-}
-
-impl ChannelConfig for NextcloudTalkConfig {
-    fn name() -> &'static str {
-        "NextCloud Talk"
-    }
-    fn desc() -> &'static str {
-        "NextCloud Talk platform"
-    }
-}
-
-impl WhatsAppConfig {
-    /// Detect which backend to use based on config fields.
-    /// Returns "cloud" if phone_number_id is set, "web" if session_path is set.
-    pub fn backend_type(&self) -> &'static str {
-        if self.phone_number_id.is_some() {
-            "cloud"
-        } else if self.session_path.is_some() {
-            "web"
-        } else {
-            // Default to Cloud API for backward compatibility
-            "cloud"
-        }
-    }
-
-    /// Check if this is a valid Cloud API config
-    pub fn is_cloud_config(&self) -> bool {
-        self.phone_number_id.is_some() && self.access_token.is_some() && self.verify_token.is_some()
-    }
-
-    /// Check if this is a valid Web config
-    pub fn is_web_config(&self) -> bool {
-        self.session_path.is_some()
-    }
-
-    /// Returns true when both Cloud and Web selectors are present.
-    ///
-    /// Runtime currently prefers Cloud mode in this case for backward compatibility.
-    pub fn is_ambiguous_config(&self) -> bool {
-        self.phone_number_id.is_some() && self.session_path.is_some()
-    }
-}
-
-/// IRC channel configuration.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct IrcConfig {
-    /// IRC server hostname
-    pub server: String,
-    /// IRC server port (default: 6697 for TLS)
-    #[serde(default = "default_irc_port")]
-    pub port: u16,
-    /// Bot nickname
-    pub nickname: String,
-    /// Username (defaults to nickname if not set)
-    pub username: Option<String>,
-    /// Channels to join on connect
-    #[serde(default)]
-    pub channels: Vec<String>,
-    /// Allowed nicknames (case-insensitive) or "*" for all
-    #[serde(default)]
-    pub allowed_users: Vec<String>,
-    /// Server password (for bouncers like ZNC)
-    pub server_password: Option<String>,
-    /// NickServ IDENTIFY password
-    pub nickserv_password: Option<String>,
-    /// SASL PLAIN password (IRCv3)
-    pub sasl_password: Option<String>,
-    /// Verify TLS certificate (default: true)
-    pub verify_tls: Option<bool>,
-}
-
-impl ChannelConfig for IrcConfig {
-    fn name() -> &'static str {
-        "IRC"
-    }
-    fn desc() -> &'static str {
-        "IRC over TLS"
-    }
-}
-
-fn default_irc_port() -> u16 {
-    6697
-}
-
-/// How R.A.I.N. receives events from Feishu / Lark.
-///
-/// - `websocket` (default) — persistent WSS long-connection; no public URL required.
-/// - `webhook`             — HTTP callback server; requires a public HTTPS endpoint.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default, JsonSchema)]
-#[serde(rename_all = "lowercase")]
-pub enum LarkReceiveMode {
-    #[default]
-    Websocket,
-    Webhook,
-}
-
-/// Lark/Feishu configuration for messaging integration.
-/// Lark is the international version; Feishu is the Chinese version.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct LarkConfig {
-    /// App ID from Lark/Feishu developer console
-    pub app_id: String,
-    /// App Secret from Lark/Feishu developer console
-    pub app_secret: String,
-    /// Encrypt key for webhook message decryption (optional)
-    #[serde(default)]
-    pub encrypt_key: Option<String>,
-    /// Verification token for webhook validation (optional)
-    #[serde(default)]
-    pub verification_token: Option<String>,
-    /// Allowed user IDs or union IDs (empty = deny all, "*" = allow all)
-    #[serde(default)]
-    pub allowed_users: Vec<String>,
-    /// When true, only respond to messages that @-mention the bot in groups.
-    /// Direct messages are always processed.
-    #[serde(default)]
-    pub mention_only: bool,
-    /// Whether to use the Feishu (Chinese) endpoint instead of Lark (International)
-    #[serde(default)]
-    pub use_feishu: bool,
-    /// Event receive mode: "websocket" (default) or "webhook"
-    #[serde(default)]
-    pub receive_mode: LarkReceiveMode,
-    /// HTTP port for webhook mode only. Must be set when receive_mode = "webhook".
-    /// Not required (and ignored) for websocket mode.
-    #[serde(default)]
-    pub port: Option<u16>,
-    /// Per-channel proxy URL (http, https, socks5, socks5h).
-    /// Overrides the global `[proxy]` setting for this channel only.
-    #[serde(default)]
-    pub proxy_url: Option<String>,
-}
-
-impl ChannelConfig for LarkConfig {
-    fn name() -> &'static str {
-        "Lark"
-    }
-    fn desc() -> &'static str {
-        "Lark Bot"
-    }
-}
-
-/// Feishu configuration for messaging integration.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct FeishuConfig {
-    /// App ID from Feishu developer console
-    pub app_id: String,
-    /// App Secret from Feishu developer console
-    pub app_secret: String,
-    /// Encrypt key for webhook message decryption (optional)
-    #[serde(default)]
-    pub encrypt_key: Option<String>,
-    /// Verification token for webhook validation (optional)
-    #[serde(default)]
-    pub verification_token: Option<String>,
-    /// Allowed user IDs or union IDs (empty = deny all, "*" = allow all)
-    #[serde(default)]
-    pub allowed_users: Vec<String>,
-    /// Event receive mode: "websocket" (default) or "webhook"
-    #[serde(default)]
-    pub receive_mode: LarkReceiveMode,
-    /// HTTP port for webhook mode only. Must be set when receive_mode = "webhook".
-    /// Not required (and ignored) for websocket mode.
-    #[serde(default)]
-    pub port: Option<u16>,
-    /// Per-channel proxy URL (http, https, socks5, socks5h).
-    /// Overrides the global `[proxy]` setting for this channel only.
-    #[serde(default)]
-    pub proxy_url: Option<String>,
-}
-
-impl ChannelConfig for FeishuConfig {
-    fn name() -> &'static str {
-        "Feishu"
-    }
-    fn desc() -> &'static str {
-        "Feishu Bot"
-    }
-}
-
-// ── Security Config ─────────────────────────────────────────────────
-
-/// Security configuration for sandboxing, resource limits, and audit logging
-#[derive(Debug, Clone, Serialize, Deserialize, Default, JsonSchema)]
-pub struct SecurityConfig {
-    /// Sandbox configuration
-    #[serde(default)]
-    pub sandbox: SandboxConfig,
-
-    /// Resource limits
-    #[serde(default)]
-    pub resources: ResourceLimitsConfig,
-
-    /// Audit logging configuration
-    #[serde(default)]
-    pub audit: AuditConfig,
-
-    /// OTP gating configuration for sensitive actions/domains.
-    #[serde(default)]
-    pub otp: OtpConfig,
-
-    /// Emergency-stop state machine configuration.
-    #[serde(default)]
-    pub estop: EstopConfig,
-
-    /// Nevis IAM integration for SSO/MFA authentication and role-based access.
-    #[serde(default)]
-    pub nevis: NevisConfig,
-}
-
-/// OTP validation strategy.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, JsonSchema, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
-pub enum OtpMethod {
-    /// Time-based one-time password (RFC 6238).
-    #[default]
-    Totp,
-    /// Future method for paired-device confirmations.
-    Pairing,
-    /// Future method for local CLI challenge prompts.
-    CliPrompt,
-}
-
-/// Security OTP configuration.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct OtpConfig {
-    /// Enable OTP gating. Defaults to disabled for backward compatibility.
-    #[serde(default)]
-    pub enabled: bool,
-
-    /// OTP method.
-    #[serde(default)]
-    pub method: OtpMethod,
-
-    /// TOTP time-step in seconds.
-    #[serde(default = "default_otp_token_ttl_secs")]
-    pub token_ttl_secs: u64,
-
-    /// Reuse window for recently validated OTP codes.
-    #[serde(default = "default_otp_cache_valid_secs")]
-    pub cache_valid_secs: u64,
-
-    /// Tool/action names gated by OTP.
-    #[serde(default = "default_otp_gated_actions")]
-    pub gated_actions: Vec<String>,
-
-    /// Explicit domain patterns gated by OTP.
-    #[serde(default)]
-    pub gated_domains: Vec<String>,
-
-    /// Domain-category presets expanded into `gated_domains`.
-    #[serde(default)]
-    pub gated_domain_categories: Vec<String>,
-
-    /// Maximum number of OTP challenge attempts before lockout.
-    #[serde(default = "default_otp_challenge_max_attempts")]
-    pub challenge_max_attempts: u32,
-}
-
-fn default_otp_token_ttl_secs() -> u64 {
-    30
-}
-
-fn default_otp_cache_valid_secs() -> u64 {
-    300
-}
-
-fn default_otp_challenge_max_attempts() -> u32 {
-    3
-}
-
-fn default_otp_gated_actions() -> Vec<String> {
-    vec![
-        "shell".to_string(),
-        "file_write".to_string(),
-        "browser_open".to_string(),
-        "browser".to_string(),
-        "memory_forget".to_string(),
-    ]
-}
-
-impl Default for OtpConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            method: OtpMethod::Totp,
-            token_ttl_secs: default_otp_token_ttl_secs(),
-            cache_valid_secs: default_otp_cache_valid_secs(),
-            gated_actions: default_otp_gated_actions(),
-            gated_domains: Vec::new(),
-            gated_domain_categories: Vec::new(),
-            challenge_max_attempts: default_otp_challenge_max_attempts(),
-        }
-    }
-}
-
-/// Emergency stop configuration.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct EstopConfig {
-    /// Enable emergency stop controls.
-    #[serde(default)]
-    pub enabled: bool,
-
-    /// File path used to persist estop state.
-    #[serde(default = "default_estop_state_file")]
-    pub state_file: String,
-
-    /// Require a valid OTP before resume operations.
-    #[serde(default = "default_true")]
-    pub require_otp_to_resume: bool,
-}
-
-fn default_estop_state_file() -> String {
-    "~/.R.A.I.N./estop-state.json".to_string()
-}
-
-impl Default for EstopConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            state_file: default_estop_state_file(),
-            require_otp_to_resume: true,
-        }
-    }
-}
-
-/// Nevis IAM integration configuration.
-///
-/// When `enabled` is true, R.A.I.N. validates incoming requests against a Nevis
-/// Security Suite instance and maps Nevis roles to tool/workspace permissions.
-#[derive(Clone, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct NevisConfig {
-    /// Enable Nevis IAM integration. Defaults to false for backward compatibility.
-    #[serde(default)]
-    pub enabled: bool,
-
-    /// Base URL of the Nevis instance (e.g. `https://nevis.example.com`).
-    #[serde(default)]
-    pub instance_url: String,
-
-    /// Nevis realm to authenticate against.
-    #[serde(default = "default_nevis_realm")]
-    pub realm: String,
-
-    /// OAuth2 client ID registered in Nevis.
-    #[serde(default)]
-    pub client_id: String,
-
-    /// OAuth2 client secret. Encrypted via SecretStore when stored on disk.
-    #[serde(default)]
-    pub client_secret: Option<String>,
-
-    /// Token validation strategy: `"local"` (JWKS) or `"remote"` (introspection).
-    #[serde(default = "default_nevis_token_validation")]
-    pub token_validation: String,
-
-    /// JWKS endpoint URL for local token validation.
-    #[serde(default)]
-    pub jwks_url: Option<String>,
-
-    /// Nevis role to R.A.I.N. permission mappings.
-    #[serde(default)]
-    pub role_mapping: Vec<NevisRoleMappingConfig>,
-
-    /// Require MFA verification for all Nevis-authenticated requests.
-    #[serde(default)]
-    pub require_mfa: bool,
-
-    /// Session timeout in seconds.
-    #[serde(default = "default_nevis_session_timeout_secs")]
-    pub session_timeout_secs: u64,
-}
-
-impl std::fmt::Debug for NevisConfig {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("NevisConfig")
-            .field("enabled", &self.enabled)
-            .field("instance_url", &self.instance_url)
-            .field("realm", &self.realm)
-            .field("client_id", &self.client_id)
-            .field(
-                "client_secret",
-                &self.client_secret.as_ref().map(|_| "[REDACTED]"),
-            )
-            .field("token_validation", &self.token_validation)
-            .field("jwks_url", &self.jwks_url)
-            .field("role_mapping", &self.role_mapping)
-            .field("require_mfa", &self.require_mfa)
-            .field("session_timeout_secs", &self.session_timeout_secs)
-            .finish()
-    }
-}
-
-impl NevisConfig {
-    /// Validate that required fields are present when Nevis is enabled.
-    ///
-    /// Call at config load time to fail fast on invalid configuration rather
-    /// than deferring errors to the first authentication request.
-    pub fn validate(&self) -> Result<(), String> {
-        if !self.enabled {
-            return Ok(());
-        }
-
-        if self.instance_url.trim().is_empty() {
-            return Err("nevis.instance_url is required when Nevis IAM is enabled".into());
-        }
-
-        if self.client_id.trim().is_empty() {
-            return Err("nevis.client_id is required when Nevis IAM is enabled".into());
-        }
-
-        if self.realm.trim().is_empty() {
-            return Err("nevis.realm is required when Nevis IAM is enabled".into());
-        }
-
-        match self.token_validation.as_str() {
-            "local" | "remote" => {}
-            other => {
-                return Err(format!(
-                    "nevis.token_validation has invalid value '{other}': \
-                     expected 'local' or 'remote'"
-                ));
-            }
-        }
-
-        if self.token_validation == "local" && self.jwks_url.is_none() {
-            return Err("nevis.jwks_url is required when token_validation is 'local'".into());
-        }
-
-        if self.session_timeout_secs == 0 {
-            return Err("nevis.session_timeout_secs must be greater than 0".into());
-        }
-
-        Ok(())
-    }
-}
-
-fn default_nevis_realm() -> String {
-    "master".into()
-}
-
-fn default_nevis_token_validation() -> String {
-    "local".into()
-}
-
-fn default_nevis_session_timeout_secs() -> u64 {
-    3600
-}
-
-impl Default for NevisConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            instance_url: String::new(),
-            realm: default_nevis_realm(),
-            client_id: String::new(),
-            client_secret: None,
-            token_validation: default_nevis_token_validation(),
-            jwks_url: None,
-            role_mapping: Vec::new(),
-            require_mfa: false,
-            session_timeout_secs: default_nevis_session_timeout_secs(),
-        }
-    }
-}
-
-/// Maps a Nevis role to R.A.I.N. tool permissions and workspace access.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct NevisRoleMappingConfig {
-    /// Nevis role name (case-insensitive).
-    pub nevis_role: String,
-
-    /// Tool names this role can access. Use `"all"` for unrestricted tool access.
-    #[serde(default)]
-    pub rain_permissions: Vec<String>,
-
-    /// Workspace names this role can access. Use `"all"` for unrestricted.
-    #[serde(default)]
-    pub workspace_access: Vec<String>,
-}
-
-/// Sandbox configuration for OS-level isolation
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct SandboxConfig {
-    /// Enable sandboxing (None = auto-detect, Some = explicit)
-    #[serde(default)]
-    pub enabled: Option<bool>,
-
-    /// Sandbox backend to use
-    #[serde(default)]
-    pub backend: SandboxBackend,
-
-    /// Custom Firejail arguments (when backend = firejail)
-    #[serde(default)]
-    pub firejail_args: Vec<String>,
-}
-
-impl Default for SandboxConfig {
-    fn default() -> Self {
-        Self {
-            enabled: None, // Auto-detect
-            backend: SandboxBackend::Auto,
-            firejail_args: Vec::new(),
-        }
-    }
-}
-
-/// Sandbox backend selection
-#[derive(Debug, Clone, Serialize, Deserialize, Default, JsonSchema)]
-#[serde(rename_all = "lowercase")]
-pub enum SandboxBackend {
-    /// Auto-detect best available (default)
-    #[default]
-    Auto,
-    /// Landlock (Linux kernel LSM, native)
-    Landlock,
-    /// Firejail (user-space sandbox)
-    Firejail,
-    /// Bubblewrap (user namespaces)
-    Bubblewrap,
-    /// Docker container isolation
-    Docker,
-    /// No sandboxing (application-layer only)
-    None,
-}
-
-/// Resource limits for command execution
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct ResourceLimitsConfig {
-    /// Maximum memory in MB per command
-    #[serde(default = "default_max_memory_mb")]
-    pub max_memory_mb: u32,
-
-    /// Maximum CPU time in seconds per command
-    #[serde(default = "default_max_cpu_time_seconds")]
-    pub max_cpu_time_seconds: u64,
-
-    /// Maximum number of subprocesses
-    #[serde(default = "default_max_subprocesses")]
-    pub max_subprocesses: u32,
-
-    /// Enable memory monitoring
-    #[serde(default = "default_memory_monitoring_enabled")]
-    pub memory_monitoring: bool,
-}
-
-fn default_max_memory_mb() -> u32 {
-    512
-}
-
-fn default_max_cpu_time_seconds() -> u64 {
-    60
-}
-
-fn default_max_subprocesses() -> u32 {
-    10
-}
-
-fn default_memory_monitoring_enabled() -> bool {
-    true
-}
-
-impl Default for ResourceLimitsConfig {
-    fn default() -> Self {
-        Self {
-            max_memory_mb: default_max_memory_mb(),
-            max_cpu_time_seconds: default_max_cpu_time_seconds(),
-            max_subprocesses: default_max_subprocesses(),
-            memory_monitoring: default_memory_monitoring_enabled(),
-        }
-    }
-}
-
-/// Audit logging configuration
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct AuditConfig {
-    /// Enable audit logging
-    #[serde(default = "default_audit_enabled")]
-    pub enabled: bool,
-
-    /// Path to audit log file (relative to R.A.I.N. dir)
-    #[serde(default = "default_audit_log_path")]
-    pub log_path: String,
-
-    /// Maximum log size in MB before rotation
-    #[serde(default = "default_audit_max_size_mb")]
-    pub max_size_mb: u32,
-
-    /// Sign events with HMAC for tamper evidence
-    #[serde(default)]
-    pub sign_events: bool,
-}
-
-fn default_audit_enabled() -> bool {
-    true
-}
-
-fn default_audit_log_path() -> String {
-    "audit.log".to_string()
-}
-
-fn default_audit_max_size_mb() -> u32 {
-    100
-}
-
-impl Default for AuditConfig {
-    fn default() -> Self {
-        Self {
-            enabled: default_audit_enabled(),
-            log_path: default_audit_log_path(),
-            max_size_mb: default_audit_max_size_mb(),
-            sign_events: false,
-        }
-    }
-}
-
-/// DingTalk configuration for Stream Mode messaging
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct DingTalkConfig {
-    /// Client ID (AppKey) from DingTalk developer console
-    pub client_id: String,
-    /// Client Secret (AppSecret) from DingTalk developer console
-    pub client_secret: String,
-    /// Allowed user IDs (staff IDs). Empty = deny all, "*" = allow all
-    #[serde(default)]
-    pub allowed_users: Vec<String>,
-    /// Per-channel proxy URL (http, https, socks5, socks5h).
-    /// Overrides the global `[proxy]` setting for this channel only.
-    #[serde(default)]
-    pub proxy_url: Option<String>,
-}
-
-impl ChannelConfig for DingTalkConfig {
-    fn name() -> &'static str {
-        "DingTalk"
-    }
-    fn desc() -> &'static str {
-        "DingTalk Stream Mode"
-    }
-}
-
-/// WeCom (WeChat Enterprise) Bot Webhook configuration
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct WeComConfig {
-    /// Webhook key from WeCom Bot configuration
-    pub webhook_key: String,
-    /// Allowed user IDs. Empty = deny all, "*" = allow all
-    #[serde(default)]
-    pub allowed_users: Vec<String>,
-}
-
-impl ChannelConfig for WeComConfig {
-    fn name() -> &'static str {
-        "WeCom"
-    }
-    fn desc() -> &'static str {
-        "WeCom Bot Webhook"
-    }
-}
-
-/// QQ Official Bot configuration (Tencent QQ Bot SDK)
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct QQConfig {
-    /// App ID from QQ Bot developer console
-    pub app_id: String,
-    /// App Secret from QQ Bot developer console
-    pub app_secret: String,
-    /// Allowed user IDs. Empty = deny all, "*" = allow all
-    #[serde(default)]
-    pub allowed_users: Vec<String>,
-    /// Per-channel proxy URL (http, https, socks5, socks5h).
-    /// Overrides the global `[proxy]` setting for this channel only.
-    #[serde(default)]
-    pub proxy_url: Option<String>,
-}
-
-impl ChannelConfig for QQConfig {
-    fn name() -> &'static str {
-        "QQ Official"
-    }
-    fn desc() -> &'static str {
-        "Tencent QQ Bot"
-    }
-}
-
-/// X/Twitter channel configuration (Twitter API v2)
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct TwitterConfig {
-    /// Twitter API v2 Bearer Token (OAuth 2.0)
-    pub bearer_token: String,
-    /// Allowed usernames or user IDs. Empty = deny all, "*" = allow all
-    #[serde(default)]
-    pub allowed_users: Vec<String>,
-}
-
-impl ChannelConfig for TwitterConfig {
-    fn name() -> &'static str {
-        "X/Twitter"
-    }
-    fn desc() -> &'static str {
-        "X/Twitter Bot via API v2"
-    }
-}
-
-/// Mochat channel configuration (Mochat customer service API)
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct MochatConfig {
-    /// Mochat API base URL
-    pub api_url: String,
-    /// Mochat API token
-    pub api_token: String,
-    /// Allowed user IDs. Empty = deny all, "*" = allow all
-    #[serde(default)]
-    pub allowed_users: Vec<String>,
-    /// Poll interval in seconds for new messages. Default: 5
-    #[serde(default = "default_mochat_poll_interval")]
-    pub poll_interval_secs: u64,
-}
-
-fn default_mochat_poll_interval() -> u64 {
-    5
-}
-
-impl ChannelConfig for MochatConfig {
-    fn name() -> &'static str {
-        "Mochat"
-    }
-    fn desc() -> &'static str {
-        "Mochat Customer Service"
-    }
-}
-
-/// Reddit channel configuration (OAuth2 bot).
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct RedditConfig {
-    /// Reddit OAuth2 client ID.
-    pub client_id: String,
-    /// Reddit OAuth2 client secret.
-    pub client_secret: String,
-    /// Reddit OAuth2 refresh token for persistent access.
-    pub refresh_token: String,
-    /// Reddit bot username (without `u/` prefix).
-    pub username: String,
-    /// Optional subreddit to filter messages (without `r/` prefix).
-    /// When set, only messages from this subreddit are processed.
-    #[serde(default)]
-    pub subreddit: Option<String>,
-}
-
-impl ChannelConfig for RedditConfig {
-    fn name() -> &'static str {
-        "Reddit"
-    }
-    fn desc() -> &'static str {
-        "Reddit bot (OAuth2)"
-    }
-}
-
-/// Bluesky channel configuration (AT Protocol).
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct BlueskyConfig {
-    /// Bluesky handle (e.g. `"mybot.bsky.social"`).
-    pub handle: String,
-    /// App-specific password (from Bluesky settings).
-    pub app_password: String,
-}
-
-impl ChannelConfig for BlueskyConfig {
-    fn name() -> &'static str {
-        "Bluesky"
-    }
-    fn desc() -> &'static str {
-        "AT Protocol"
-    }
-}
-
-/// Nostr channel configuration (NIP-04 + NIP-17 private messages)
-#[cfg(feature = "channel-nostr")]
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct NostrConfig {
-    /// Private key in hex or nsec bech32 format
-    pub private_key: String,
-    /// Relay URLs (wss://). Defaults to popular public relays if omitted.
-    #[serde(default = "default_nostr_relays")]
-    pub relays: Vec<String>,
-    /// Allowed sender public keys (hex or npub). Empty = deny all, "*" = allow all
-    #[serde(default)]
-    pub allowed_pubkeys: Vec<String>,
-}
-
-#[cfg(feature = "channel-nostr")]
-impl ChannelConfig for NostrConfig {
-    fn name() -> &'static str {
-        "Nostr"
-    }
-    fn desc() -> &'static str {
-        "Nostr DMs"
-    }
-}
-
-#[cfg(feature = "channel-nostr")]
-pub fn default_nostr_relays() -> Vec<String> {
-    vec![
-        "wss://relay.damus.io".to_string(),
-        "wss://nos.lol".to_string(),
-        "wss://relay.primal.net".to_string(),
-        "wss://relay.snort.social".to_string(),
-    ]
-}
-
-// -- Notion --
-
-/// Notion integration configuration (`[notion]`).
-///
-/// When `enabled = true`, the agent polls a Notion database for pending tasks
-/// and exposes a `notion` tool for querying, reading, creating, and updating pages.
-/// Requires `api_key` (or the `NOTION_API_KEY` env var) and `database_id`.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct NotionConfig {
-    #[serde(default)]
-    pub enabled: bool,
-    #[serde(default)]
-    pub api_key: String,
-    #[serde(default)]
-    pub database_id: String,
-    #[serde(default = "default_notion_poll_interval")]
-    pub poll_interval_secs: u64,
-    #[serde(default = "default_notion_status_prop")]
-    pub status_property: String,
-    #[serde(default = "default_notion_input_prop")]
-    pub input_property: String,
-    #[serde(default = "default_notion_result_prop")]
-    pub result_property: String,
-    #[serde(default = "default_notion_max_concurrent")]
-    pub max_concurrent: usize,
-    #[serde(default = "default_notion_recover_stale")]
-    pub recover_stale: bool,
-}
-
-fn default_notion_poll_interval() -> u64 {
-    5
-}
-fn default_notion_status_prop() -> String {
-    "Status".into()
-}
-fn default_notion_input_prop() -> String {
-    "Input".into()
-}
-fn default_notion_result_prop() -> String {
-    "Result".into()
-}
-fn default_notion_max_concurrent() -> usize {
-    4
-}
-fn default_notion_recover_stale() -> bool {
-    true
-}
-
-impl Default for NotionConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            api_key: String::new(),
-            database_id: String::new(),
-            poll_interval_secs: default_notion_poll_interval(),
-            status_property: default_notion_status_prop(),
-            input_property: default_notion_input_prop(),
-            result_property: default_notion_result_prop(),
-            max_concurrent: default_notion_max_concurrent(),
-            recover_stale: default_notion_recover_stale(),
-        }
-    }
-}
-
-/// Jira integration configuration (`[jira]`).
-///
-/// When `enabled = true`, registers the `jira` tool which can get tickets,
-/// search with JQL, and add comments. Requires `base_url` and `api_token`
-/// (or the `JIRA_API_TOKEN` env var).
-///
-/// ## Defaults
-/// - `enabled`: `false`
-/// - `allowed_actions`: `["get_ticket"]` — read-only by default.
-///   Add `"search_tickets"` or `"comment_ticket"` to unlock them.
-/// - `timeout_secs`: `30`
-///
-/// ## Auth
-/// Jira Cloud uses HTTP Basic auth: `email` + `api_token`.
-/// `api_token` is stored encrypted at rest; set it here or via `JIRA_API_TOKEN`.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct JiraConfig {
-    /// Enable the `jira` tool. Default: `false`.
-    #[serde(default)]
-    pub enabled: bool,
-    /// Atlassian instance base URL, e.g. `https://yourco.atlassian.net`.
-    #[serde(default)]
-    pub base_url: String,
-    /// Jira account email used for Basic auth.
-    #[serde(default)]
-    pub email: String,
-    /// Jira API token. Encrypted at rest. Falls back to `JIRA_API_TOKEN` env var.
-    #[serde(default)]
-    pub api_token: String,
-    /// Actions the agent is permitted to call.
-    /// Valid values: `"get_ticket"`, `"search_tickets"`, `"comment_ticket"`.
-    /// Defaults to `["get_ticket"]` (read-only).
-    #[serde(default = "default_jira_allowed_actions")]
-    pub allowed_actions: Vec<String>,
-    /// Request timeout in seconds. Default: `30`.
-    #[serde(default = "default_jira_timeout_secs")]
-    pub timeout_secs: u64,
-}
-
-fn default_jira_allowed_actions() -> Vec<String> {
-    vec!["get_ticket".to_string()]
-}
-
-fn default_jira_timeout_secs() -> u64 {
-    30
-}
-
-impl Default for JiraConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            base_url: String::new(),
-            email: String::new(),
-            api_token: String::new(),
-            allowed_actions: default_jira_allowed_actions(),
-            timeout_secs: default_jira_timeout_secs(),
-        }
-    }
-}
-
-// ── Config impl ──────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Config impl Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 fn default_config_and_workspace_dirs() -> Result<(PathBuf, PathBuf)> {
     let config_dir = default_config_dir()?;
@@ -6220,7 +3792,7 @@ fn is_temp_directory(path: &Path) -> bool {
     if path.starts_with(&temp) {
         return true;
     }
-    // Canonicalize when possible to handle symlinks (macOS /var → /private/var)
+    // Canonicalize when possible to handle symlinks (macOS /var Ã¢â€ â€™ /private/var)
     let canon_temp = temp.canonicalize().unwrap_or_else(|_| temp.clone());
     let canon_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
     canon_path.starts_with(&canon_temp)
@@ -6643,7 +4215,7 @@ async fn ensure_bootstrap_files(workspace_dir: &Path) -> Result<()> {
     let defaults: &[(&str, &str)] = &[
         (
             "IDENTITY.md",
-            "# IDENTITY.md — Who Am I?\n\n\
+            "# IDENTITY.md Ã¢â‚¬â€ Who Am I?\n\n\
              I am R.A.I.N., an autonomous AI agent.\n\n\
              ## Traits\n\
              - Helpful, precise, and safety-conscious\n\
@@ -6651,7 +4223,7 @@ async fn ensure_bootstrap_files(workspace_dir: &Path) -> Result<()> {
         ),
         (
             "SOUL.md",
-            "# SOUL.md — Who You Are\n\n\
+            "# SOUL.md Ã¢â‚¬â€ Who You Are\n\n\
              You are R.A.I.N., an autonomous AI agent.\n\n\
              ## Core Principles\n\
              - Be helpful and accurate\n\
