@@ -6,10 +6,10 @@ use async_trait::async_trait;
 use chrono::Local;
 use parking_lot::Mutex;
 use rusqlite::{params, Connection};
-use std::fmt::Write as _;
-use std::path::{Path, PathBuf};
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap};
+use std::fmt::Write as _;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread;
@@ -254,9 +254,7 @@ impl SqliteMemory {
             .query_row([], |row| row.get::<_, String>(0))?
             .contains("session_id");
         if !has_session_id {
-            conn.execute_batch(
-                "ALTER TABLE memories ADD COLUMN session_id TEXT;",
-            )?;
+            conn.execute_batch("ALTER TABLE memories ADD COLUMN session_id TEXT;")?;
         }
 
         conn.execute_batch(
@@ -362,7 +360,10 @@ impl SqliteMemory {
     }
 
     fn band_candidate_limit(limit: usize) -> usize {
-        std::cmp::max(limit.saturating_mul(LSH_CANDIDATE_MULTIPLIER), LSH_MIN_CANDIDATES)
+        std::cmp::max(
+            limit.saturating_mul(LSH_CANDIDATE_MULTIPLIER),
+            LSH_MIN_CANDIDATES,
+        )
     }
 
     fn load_missing_embedding_band_rows(
@@ -628,7 +629,10 @@ impl SqliteMemory {
         sql.push(')');
         sql.push_str(" AND m.embedding IS NOT NULL");
         Self::push_recall_filters(&mut sql, &mut param_values, &mut idx, "m.", filters);
-        let _ = write!(sql, " GROUP BY m.id ORDER BY band_hits DESC, updated_at DESC LIMIT ?{idx}");
+        let _ = write!(
+            sql,
+            " GROUP BY m.id ORDER BY band_hits DESC, updated_at DESC LIMIT ?{idx}"
+        );
         #[allow(clippy::cast_possible_wrap)]
         param_values.push(Box::new(limit as i64));
 
@@ -878,9 +882,8 @@ impl SqliteMemory {
         let conn = self.conn.clone();
         let indexed_entries: Vec<(String, Vec<u8>)> = tokio::task::spawn_blocking(move || {
             let conn = conn.lock();
-            let mut stmt = conn.prepare(
-                "SELECT id, embedding FROM memories WHERE embedding IS NOT NULL",
-            )?;
+            let mut stmt =
+                conn.prepare("SELECT id, embedding FROM memories WHERE embedding IS NOT NULL")?;
             let rows = stmt.query_map([], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?))
             })?;
@@ -1984,8 +1987,8 @@ mod tests {
                 "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='embedding_cache'",
                 [],
                 |row| row.get(0),
-        )
-        .unwrap();
+            )
+            .unwrap();
         assert_eq!(count, 1);
     }
 
@@ -2063,15 +2066,9 @@ mod tests {
     #[test]
     fn startup_backfill_restores_missing_embedding_bands_for_legacy_rows() {
         let tmp = TempDir::new().unwrap();
-        let mem = SqliteMemory::with_embedder(
-            tmp.path(),
-            Arc::new(TestEmbedding),
-            0.7,
-            0.3,
-            1000,
-            None,
-        )
-        .unwrap();
+        let mem =
+            SqliteMemory::with_embedder(tmp.path(), Arc::new(TestEmbedding), 0.7, 0.3, 1000, None)
+                .unwrap();
 
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
@@ -2092,7 +2089,10 @@ mod tests {
         drop(mem);
 
         let reopened = SqliteMemory::new(tmp.path()).unwrap();
-        assert_eq!(count_embedding_bands(&reopened, &entry.id), LSH_BAND_COUNT as i64);
+        assert_eq!(
+            count_embedding_bands(&reopened, &entry.id),
+            LSH_BAND_COUNT as i64
+        );
 
         let candidate_ids = {
             let conn = reopened.conn.lock();
@@ -2110,15 +2110,9 @@ mod tests {
     #[test]
     fn startup_backfill_repairs_partial_embedding_band_rows() {
         let tmp = TempDir::new().unwrap();
-        let mem = SqliteMemory::with_embedder(
-            tmp.path(),
-            Arc::new(TestEmbedding),
-            0.7,
-            0.3,
-            1000,
-            None,
-        )
-        .unwrap();
+        let mem =
+            SqliteMemory::with_embedder(tmp.path(), Arc::new(TestEmbedding), 0.7, 0.3, 1000, None)
+                .unwrap();
 
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
@@ -2139,7 +2133,10 @@ mod tests {
         drop(mem);
 
         let reopened = SqliteMemory::new(tmp.path()).unwrap();
-        assert_eq!(count_embedding_bands(&reopened, &entry.id), LSH_BAND_COUNT as i64);
+        assert_eq!(
+            count_embedding_bands(&reopened, &entry.id),
+            LSH_BAND_COUNT as i64
+        );
     }
 
     // ── FTS5 sync trigger tests ──────────────────────────────────

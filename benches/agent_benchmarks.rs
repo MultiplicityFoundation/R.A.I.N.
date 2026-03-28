@@ -241,9 +241,5 @@ fn bench_agent_turn(c: &mut Criterion) {
     });
 }
 
-criterion_group!(
-    benches,
-    bench_memory_operations,
-    bench_agent_turn,
-);
+criterion_group!(benches, bench_memory_operations, bench_agent_turn,);
 criterion_main!(benches);

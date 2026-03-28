@@ -677,10 +677,9 @@ impl Agent {
     fn build_system_prompt_for_state(state: AgentPromptState<'_>) -> Result<String> {
         let active_tools = state.toolbox_manager.active_tools_boxed();
         let tool_specs = state.toolbox_manager.active_tool_specs();
-        let use_native_tools = state.tool_dispatch_mode.uses_native_tools(
-            state.provider_supports_native_tools,
-            !tool_specs.is_empty(),
-        );
+        let use_native_tools = state
+            .tool_dispatch_mode
+            .uses_native_tools(state.provider_supports_native_tools, !tool_specs.is_empty());
         let instructions = if use_native_tools {
             String::new()
         } else {
