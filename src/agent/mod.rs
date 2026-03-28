@@ -1,7 +1,6 @@
 #[allow(clippy::module_inception)]
 pub mod agent;
 pub mod classifier;
-pub mod dispatcher;
 pub(crate) mod history;
 pub mod loop_;
 pub mod manifest;
@@ -17,6 +16,6 @@ pub(crate) mod tool_filter;
 mod tests;
 
 #[allow(unused_imports)]
-pub use agent::{Agent, AgentBuilder};
+pub use agent::{Agent, AgentBuilder, ToolDispatchMode};
 #[allow(unused_imports)]
 pub use loop_::{process_message, run};

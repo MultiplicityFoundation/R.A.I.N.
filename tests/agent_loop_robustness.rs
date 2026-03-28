@@ -9,8 +9,7 @@
 
 use anyhow::Result;
 use async_trait::async_trait;
-use rain_labs::agent::agent::Agent;
-use rain_labs::agent::dispatcher::NativeToolDispatcher;
+use rain_labs::agent::{Agent, ToolDispatchMode};
 use rain_labs::config::MemoryConfig;
 use rain_labs::memory;
 use rain_labs::memory::Memory;
@@ -201,7 +200,7 @@ fn build_agent(provider: Box<dyn Provider>, tools: Vec<Box<dyn Tool>>) -> Agent 
         .tools(tools)
         .memory(make_memory())
         .observer(make_observer())
-        .tool_dispatcher(Box::new(NativeToolDispatcher))
+        .tool_dispatch_mode(ToolDispatchMode::Native)
         .workspace_dir(std::env::temp_dir())
         .build()
         .unwrap()

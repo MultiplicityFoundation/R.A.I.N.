@@ -9,17 +9,14 @@
 
 use anyhow::Result;
 use async_trait::async_trait;
-use rain_labs::agent::agent::Agent;
-use rain_labs::agent::dispatcher::{NativeToolDispatcher, XmlToolDispatcher};
+use rain_labs::agent::{Agent, ToolDispatchMode};
 use rain_labs::agent::memory_loader::MemoryLoader;
 use rain_labs::config::MemoryConfig;
 use rain_labs::memory;
 use rain_labs::memory::Memory;
 use rain_labs::observability::{NoopObserver, Observer};
 use rain_labs::providers::traits::ChatMessage;
-use rain_labs::providers::{
-    ChatRequest, ChatResponse, ConversationMessage, Provider, ProviderRuntimeOptions, ToolCall,
-};
+use rain_labs::providers::{ChatRequest, ChatResponse, Provider, ProviderRuntimeOptions, ToolCall};
 use rain_labs::tools::{Tool, ToolResult};
 use serde_json::json;
 use std::sync::{Arc, Mutex};
@@ -264,7 +261,7 @@ fn build_agent(provider: Box<dyn Provider>, tools: Vec<Box<dyn Tool>>) -> Agent 
         .tools(tools)
         .memory(make_memory())
         .observer(make_observer())
-        .tool_dispatcher(Box::new(NativeToolDispatcher))
+        .tool_dispatch_mode(ToolDispatchMode::Native)
         .workspace_dir(std::env::temp_dir())
         .build()
         .unwrap()
@@ -276,7 +273,7 @@ fn build_agent_xml(provider: Box<dyn Provider>, tools: Vec<Box<dyn Tool>>) -> Ag
         .tools(tools)
         .memory(make_memory())
         .observer(make_observer())
-        .tool_dispatcher(Box::new(XmlToolDispatcher))
+        .tool_dispatch_mode(ToolDispatchMode::Xml)
         .workspace_dir(std::env::temp_dir())
         .build()
         .unwrap()
@@ -292,7 +289,7 @@ fn build_recording_agent(
         .tools(tools)
         .memory(make_memory())
         .observer(make_observer())
-        .tool_dispatcher(Box::new(NativeToolDispatcher))
+        .tool_dispatch_mode(ToolDispatchMode::Native)
         .workspace_dir(std::env::temp_dir());
 
     if let Some(loader) = memory_loader {
@@ -533,12 +530,11 @@ async fn e2e_multi_turn_history_fidelity() {
     // Verify agent history: system + 3*(user + assistant) = 7
     let history = agent.history();
     assert_eq!(history.len(), 7);
-    assert!(matches!(&history[0], ConversationMessage::Chat(c) if c.role == "system"));
-    assert!(matches!(&history[1], ConversationMessage::Chat(c) if c.role == "user"));
-    assert!(matches!(&history[2], ConversationMessage::Chat(c) if c.role == "assistant"));
-    assert!(
-        matches!(&history[6], ConversationMessage::Chat(c) if c.role == "assistant" && c.content == "response 3")
-    );
+    assert_eq!(history[0].role, "system");
+    assert_eq!(history[1].role, "user");
+    assert_eq!(history[2].role, "assistant");
+    assert_eq!(history[6].role, "assistant");
+    assert_eq!(history[6].content, "response 3");
 }
 
 /// Validates that a custom MemoryLoader injects RAG context into user
@@ -576,14 +572,9 @@ async fn e2e_memory_enrichment_injects_context() {
 
     // Agent history also stores enriched message
     let history = agent.history();
-    match &history[1] {
-        ConversationMessage::Chat(c) => {
-            assert_eq!(c.role, "user");
-            assert!(c.content.starts_with("[Memory context]"));
-            assert!(c.content.ends_with("hello"));
-        }
-        other => panic!("Expected Chat variant for user message, got: {other:?}"),
-    }
+    assert_eq!(history[1].role, "user");
+    assert!(history[1].content.starts_with("[Memory context]"));
+    assert!(history[1].content.ends_with("hello"));
 }
 
 /// Validates multi-turn conversation with memory enrichment: every user

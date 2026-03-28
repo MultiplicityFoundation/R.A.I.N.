@@ -1,5 +1,5 @@
 use super::traits::{Tool, ToolResult};
-use crate::agent::dispatcher::{NativeToolDispatcher, ToolDispatcher, XmlToolDispatcher};
+use crate::agent::agent::ToolDispatchMode;
 use crate::agent::prompt::{PromptContext, SystemPromptBuilder};
 use crate::config::{DelegateAgentConfig, DelegateToolConfig};
 use crate::memory::Memory;
@@ -513,18 +513,14 @@ impl DelegateTool {
             &self.workspace_dir,
             None,
         )?);
-        let tool_dispatcher: Box<dyn ToolDispatcher> = if provider.supports_native_tools() {
-            Box::new(NativeToolDispatcher)
-        } else {
-            Box::new(XmlToolDispatcher)
-        };
         let manifest = self.load_delegate_manifest(agent_config)?;
         let mut builder = crate::agent::Agent::builder()
             .provider(provider)
+            .provider_name(agent_config.provider.clone())
             .tools(sub_tools)
             .memory(memory)
             .observer(noop_observer)
-            .tool_dispatcher(tool_dispatcher)
+            .tool_dispatch_mode(ToolDispatchMode::Auto)
             .workspace_dir(self.workspace_dir.clone())
             .config(crate::config::AgentConfig {
                 max_tool_iterations: agent_config.max_iterations,

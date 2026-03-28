@@ -769,7 +769,7 @@ mod tests {
     #[tokio::test]
     async fn e2e_agent_file_read_pdf_extraction() {
         use crate::agent::agent::Agent;
-        use crate::agent::dispatcher::NativeToolDispatcher;
+        use crate::agent::ToolDispatchMode;
         use crate::providers::{ChatResponse, Provider, ToolCall};
         use e2e_helpers::*;
 
@@ -819,7 +819,7 @@ mod tests {
             .tools(vec![file_read_tool])
             .memory(make_memory())
             .observer(make_observer())
-            .tool_dispatcher(Box::new(NativeToolDispatcher))
+            .tool_dispatch_mode(ToolDispatchMode::Native)
             .workspace_dir(workspace.clone())
             .build()
             .unwrap();
@@ -866,7 +866,7 @@ mod tests {
     #[tokio::test]
     async fn e2e_agent_file_read_lossy_binary() {
         use crate::agent::agent::Agent;
-        use crate::agent::dispatcher::NativeToolDispatcher;
+        use crate::agent::ToolDispatchMode;
         use crate::providers::{ChatResponse, Provider, ToolCall};
         use e2e_helpers::*;
 
@@ -911,7 +911,7 @@ mod tests {
             .tools(vec![file_read_tool])
             .memory(make_memory())
             .observer(make_observer())
-            .tool_dispatcher(Box::new(NativeToolDispatcher))
+            .tool_dispatch_mode(ToolDispatchMode::Native)
             .workspace_dir(workspace.clone())
             .build()
             .unwrap();
@@ -961,7 +961,7 @@ mod tests {
     #[ignore = "requires valid OpenAI Codex OAuth credentials"]
     async fn e2e_live_file_read_pdf() {
         use crate::agent::agent::Agent;
-        use crate::agent::dispatcher::XmlToolDispatcher;
+        use crate::agent::ToolDispatchMode;
         use crate::providers::openai_codex::OpenAiCodexProvider;
         use crate::providers::{Provider, ProviderRuntimeOptions};
         use e2e_helpers::*;
@@ -994,7 +994,7 @@ mod tests {
             .tools(vec![file_read_tool])
             .memory(make_memory())
             .observer(make_observer())
-            .tool_dispatcher(Box::new(XmlToolDispatcher))
+            .tool_dispatch_mode(ToolDispatchMode::Xml)
             .workspace_dir(workspace.clone())
             .model_name("gpt-5.3-codex".to_string())
             .build()

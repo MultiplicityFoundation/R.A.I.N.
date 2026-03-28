@@ -2,8 +2,7 @@
 
 use anyhow::Result;
 use async_trait::async_trait;
-use rain_labs::agent::agent::Agent;
-use rain_labs::agent::dispatcher::{NativeToolDispatcher, XmlToolDispatcher};
+use rain_labs::agent::{Agent, ToolDispatchMode};
 use rain_labs::agent::memory_loader::MemoryLoader;
 use rain_labs::config::MemoryConfig;
 use rain_labs::memory;
@@ -47,27 +46,27 @@ pub fn tool_response(calls: Vec<ToolCall>) -> ChatResponse {
     }
 }
 
-/// Build an agent with `NativeToolDispatcher`.
+/// Build an agent with native tool mode.
 pub fn build_agent(provider: Box<dyn Provider>, tools: Vec<Box<dyn Tool>>) -> Agent {
     Agent::builder()
         .provider(provider)
         .tools(tools)
         .memory(make_memory())
         .observer(make_observer())
-        .tool_dispatcher(Box::new(NativeToolDispatcher))
+        .tool_dispatch_mode(ToolDispatchMode::Native)
         .workspace_dir(std::env::temp_dir())
         .build()
         .unwrap()
 }
 
-/// Build an agent with `XmlToolDispatcher`.
+/// Build an agent with XML tool mode.
 pub fn build_agent_xml(provider: Box<dyn Provider>, tools: Vec<Box<dyn Tool>>) -> Agent {
     Agent::builder()
         .provider(provider)
         .tools(tools)
         .memory(make_memory())
         .observer(make_observer())
-        .tool_dispatcher(Box::new(XmlToolDispatcher))
+        .tool_dispatch_mode(ToolDispatchMode::Xml)
         .workspace_dir(std::env::temp_dir())
         .build()
         .unwrap()
@@ -84,7 +83,7 @@ pub fn build_recording_agent(
         .tools(tools)
         .memory(make_memory())
         .observer(make_observer())
-        .tool_dispatcher(Box::new(NativeToolDispatcher))
+        .tool_dispatch_mode(ToolDispatchMode::Native)
         .workspace_dir(std::env::temp_dir());
 
     if let Some(loader) = memory_loader {
@@ -110,7 +109,7 @@ pub fn build_agent_with_sqlite_memory(
         .tools(tools)
         .memory(mem)
         .observer(make_observer())
-        .tool_dispatcher(Box::new(NativeToolDispatcher))
+        .tool_dispatch_mode(ToolDispatchMode::Native)
         .workspace_dir(std::env::temp_dir())
         .build()
         .unwrap()

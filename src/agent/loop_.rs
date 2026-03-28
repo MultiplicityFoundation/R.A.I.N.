@@ -1,3 +1,4 @@
+use crate::agent::agent::ToolDispatchMode;
 use crate::agent::history::{
     auto_compact_history, autosave_memory_key, build_context, build_hardware_context,
     load_interactive_session_history, memory_session_id_from_state_file,
@@ -169,6 +170,27 @@ pub(crate) fn is_tool_loop_cancelled(err: &anyhow::Error) -> bool {
     err.chain().any(|source| source.is::<ToolLoopCancelled>())
 }
 
+fn append_prompt_tool_result(
+    tool_results: &mut String,
+    tool_name: &str,
+    outcome: &ToolExecutionOutcome,
+) {
+    let status = if outcome.success { "ok" } else { "error" };
+    let _ = writeln!(
+        tool_results,
+        "<tool_result name=\"{}\" status=\"{}\">\n{}\n</tool_result>",
+        tool_name, status, outcome.output
+    );
+}
+
+fn should_use_native_tools(
+    provider: &dyn Provider,
+    tool_specs: &[crate::tools::ToolSpec],
+    tool_dispatch_mode: ToolDispatchMode,
+) -> bool {
+    tool_dispatch_mode.uses_native_tools(provider.supports_native_tools(), !tool_specs.is_empty())
+}
+
 pub(crate) struct AgentTurnContext<'a> {
     pub provider: &'a dyn Provider,
     pub history: &'a mut Vec<ChatMessage>,
@@ -313,6 +335,64 @@ pub(crate) async fn run_tool_call_loop_with_options(
     system_prompt_renderer: Option<&(dyn Fn() -> String + Send + Sync)>,
     pacing: &crate::config::PacingConfig,
 ) -> Result<String> {
+    run_tool_call_loop_with_policy(
+        provider,
+        history,
+        tools_registry,
+        toolbox_manager,
+        observer,
+        provider_name,
+        model,
+        temperature,
+        silent,
+        approval,
+        channel_name,
+        channel_reply_target,
+        multimodal_config,
+        max_tool_iterations,
+        cancellation_token,
+        on_delta,
+        hooks,
+        excluded_tools,
+        dedup_exempt_tools,
+        activated_tools,
+        model_switch_callback,
+        system_prompt_renderer,
+        pacing,
+        true,
+        ToolDispatchMode::Auto,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn run_tool_call_loop_with_policy(
+    provider: &dyn Provider,
+    history: &mut Vec<ChatMessage>,
+    tools_registry: &[Box<dyn Tool>],
+    toolbox_manager: Option<&crate::tools::ToolboxManager>,
+    observer: &dyn Observer,
+    provider_name: &str,
+    model: &str,
+    temperature: f64,
+    silent: bool,
+    approval: Option<&ApprovalManager>,
+    channel_name: &str,
+    channel_reply_target: Option<&str>,
+    multimodal_config: &crate::config::MultimodalConfig,
+    max_tool_iterations: usize,
+    cancellation_token: Option<CancellationToken>,
+    on_delta: Option<tokio::sync::mpsc::Sender<String>>,
+    hooks: Option<&crate::hooks::HookRunner>,
+    excluded_tools: &[String],
+    dedup_exempt_tools: &[String],
+    activated_tools: Option<&std::sync::Arc<std::sync::Mutex<crate::tools::ActivatedToolSet>>>,
+    model_switch_callback: Option<ModelSwitchCallback>,
+    system_prompt_renderer: Option<&(dyn Fn() -> String + Send + Sync)>,
+    pacing: &crate::config::PacingConfig,
+    allow_parallel_tools: bool,
+    tool_dispatch_mode: ToolDispatchMode,
+) -> Result<String> {
     let max_iterations = if max_tool_iterations == 0 {
         DEFAULT_MAX_TOOL_ITERATIONS
     } else {
@@ -372,7 +452,7 @@ pub(crate) async fn run_tool_call_loop_with_options(
             excluded_tools,
             activated_tools,
         );
-        let use_native_tools = provider.supports_native_tools() && !tool_specs.is_empty();
+        let use_native_tools = should_use_native_tools(provider, &tool_specs, tool_dispatch_mode);
 
         let image_marker_count = multimodal::count_image_markers(history);
         if image_marker_count > 0 && !provider.supports_vision() {
@@ -722,7 +802,8 @@ pub(crate) async fn run_tool_call_loop_with_options(
         let mut individual_results: Vec<(Option<String>, String)> = Vec::new();
         let mut ordered_results: Vec<Option<(String, Option<String>, ToolExecutionOutcome)>> =
             (0..tool_calls.len()).map(|_| None).collect();
-        let allow_parallel_execution = should_execute_tools_in_parallel(&tool_calls, approval);
+        let allow_parallel_execution =
+            should_execute_tools_in_parallel(&tool_calls, approval, allow_parallel_tools);
         let mut executable_indices: Vec<usize> = Vec::new();
         let mut executable_calls: Vec<ParsedToolCall> = Vec::new();
 
@@ -1000,11 +1081,7 @@ pub(crate) async fn run_tool_call_loop_with_options(
                 detection_relevant_output.push_str(&outcome.output);
             }
             individual_results.push((tool_call_id, outcome.output.clone()));
-            let _ = writeln!(
-                tool_results,
-                "<tool_result name=\"{}\">\n{}\n</tool_result>",
-                tool_name, outcome.output
-            );
+            append_prompt_tool_result(&mut tool_results, &tool_name, &outcome);
         }
 
         // ── Time-gated loop detection ──────────────────────────
@@ -1744,6 +1821,7 @@ pub async fn run(
     } else {
         None
     };
+    let tool_dispatch_mode = ToolDispatchMode::from_config_value(&config.agent.tool_dispatcher);
     let tool_desc_catalog = tool_descs
         .iter()
         .map(|(name, desc)| ((*name).to_string(), (*desc).to_string()))
@@ -1813,7 +1891,8 @@ pub async fn run(
         #[allow(unused_assignments)]
         let mut response = String::new();
         loop {
-            let native_tools = provider.supports_native_tools();
+            let native_tools =
+                tool_dispatch_mode.uses_native_tools(provider.supports_native_tools(), true);
             let prompt_renderer = || {
                 render_runtime_system_prompt(RuntimeSystemPromptContext {
                     workspace_dir: &config.workspace_dir,
@@ -1833,7 +1912,7 @@ pub async fn run(
                     deferred_section: &deferred_section,
                 })
             };
-            match run_tool_call_loop_with_options(
+            match run_tool_call_loop_with_policy(
                 provider.as_ref(),
                 &mut history,
                 &tools_registry,
@@ -1857,6 +1936,8 @@ pub async fn run(
                 Some(model_switch_callback.clone()),
                 Some(&prompt_renderer),
                 &config.pacing,
+                config.agent.parallel_tools,
+                tool_dispatch_mode,
             )
             .await
             {
@@ -1937,7 +2018,8 @@ pub async fn run(
             identity_config: Some(&config.identity),
             bootstrap_max_chars,
             autonomy_config: Some(&config.autonomy),
-            native_tools: provider.supports_native_tools(),
+            native_tools: tool_dispatch_mode
+                .uses_native_tools(provider.supports_native_tools(), true),
             skills_prompt_mode: config.skills.prompt_injection_mode,
             tool_descriptions: Some(&i18n_descs),
             toolbox_manager: Some(&session_toolbox),
@@ -2019,7 +2101,8 @@ pub async fn run(
                         identity_config: Some(&config.identity),
                         bootstrap_max_chars,
                         autonomy_config: Some(&config.autonomy),
-                        native_tools: provider.supports_native_tools(),
+                        native_tools: tool_dispatch_mode
+                            .uses_native_tools(provider.supports_native_tools(), true),
                         skills_prompt_mode: config.skills.prompt_injection_mode,
                         tool_descriptions: Some(&i18n_descs),
                         toolbox_manager: Some(&session_toolbox),
@@ -2099,7 +2182,8 @@ pub async fn run(
             );
 
             let response = loop {
-                let native_tools = provider.supports_native_tools();
+                let native_tools =
+                    tool_dispatch_mode.uses_native_tools(provider.supports_native_tools(), true);
                 let prompt_renderer = || {
                     render_runtime_system_prompt(RuntimeSystemPromptContext {
                         workspace_dir: &config.workspace_dir,
@@ -2119,7 +2203,7 @@ pub async fn run(
                         deferred_section: &deferred_section,
                     })
                 };
-                match run_tool_call_loop_with_options(
+                match run_tool_call_loop_with_policy(
                     provider.as_ref(),
                     &mut history,
                     &tools_registry,
@@ -2143,6 +2227,8 @@ pub async fn run(
                     Some(model_switch_callback.clone()),
                     Some(&prompt_renderer),
                     &config.pacing,
+                    config.agent.parallel_tools,
+                    tool_dispatch_mode,
                 )
                 .await
                 {
@@ -2473,7 +2559,8 @@ pub async fn process_message(
     } else {
         None
     };
-    let native_tools = provider.supports_native_tools();
+    let native_tools = ToolDispatchMode::from_config_value(&config.agent.tool_dispatcher)
+        .uses_native_tools(provider.supports_native_tools(), true);
     let mut system_prompt = crate::channels::build_system_prompt_with_mode_and_autonomy(
         &config.workspace_dir,
         &model_name,
@@ -4578,6 +4665,24 @@ Done."#;
         let (text, calls) = parse_tool_calls(response);
         assert!(text.contains("Done."));
         assert!(calls.is_empty());
+    }
+
+    #[test]
+    fn append_prompt_tool_result_marks_failures_as_error() {
+        let mut rendered = String::new();
+        append_prompt_tool_result(
+            &mut rendered,
+            "shell",
+            &ToolExecutionOutcome {
+                output: "Error: denied".into(),
+                success: false,
+                error_reason: Some("denied".into()),
+                duration: std::time::Duration::ZERO,
+            },
+        );
+
+        assert!(rendered.contains(r#"status="error""#));
+        assert!(rendered.contains("Error: denied"));
     }
 
     #[test]

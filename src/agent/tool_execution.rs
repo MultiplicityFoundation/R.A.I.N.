@@ -226,7 +226,12 @@ pub(crate) async fn execute_one_tool(
 pub(crate) fn should_execute_tools_in_parallel(
     tool_calls: &[ParsedToolCall],
     approval: Option<&ApprovalManager>,
+    allow_parallel_tools: bool,
 ) -> bool {
+    if !allow_parallel_tools {
+        return false;
+    }
+
     if tool_calls.len() <= 1 {
         return false;
     }
@@ -435,7 +440,25 @@ mod tests {
             tool_call_id: None,
         }];
 
-        assert!(!should_execute_tools_in_parallel(&calls, None));
+        assert!(!should_execute_tools_in_parallel(&calls, None, true));
+    }
+
+    #[test]
+    fn should_execute_tools_in_parallel_returns_false_when_disabled_by_config() {
+        let calls = vec![
+            ParsedToolCall {
+                name: "shell".to_string(),
+                arguments: serde_json::json!({"command": "pwd"}),
+                tool_call_id: None,
+            },
+            ParsedToolCall {
+                name: "http_request".to_string(),
+                arguments: serde_json::json!({"url": "https://example.com"}),
+                tool_call_id: None,
+            },
+        ];
+
+        assert!(!should_execute_tools_in_parallel(&calls, None, false));
     }
 
     #[test]
@@ -457,7 +480,8 @@ mod tests {
 
         assert!(!should_execute_tools_in_parallel(
             &calls,
-            Some(&approval_mgr)
+            Some(&approval_mgr),
+            true,
         ));
     }
 
@@ -483,7 +507,8 @@ mod tests {
 
         assert!(should_execute_tools_in_parallel(
             &calls,
-            Some(&approval_mgr)
+            Some(&approval_mgr),
+            true,
         ));
     }
 }

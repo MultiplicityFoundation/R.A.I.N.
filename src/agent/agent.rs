@@ -1,7 +1,7 @@
-use crate::agent::dispatcher::{
-    NativeToolDispatcher, ParsedToolCall, ToolDispatcher, ToolExecutionResult, XmlToolDispatcher,
+use crate::agent::history::trim_history as trim_chat_history;
+use crate::agent::loop_::{
+    build_tool_instructions_from_specs, run_tool_call_loop_with_policy, ModelSwitchState,
 };
-use crate::agent::loop_::ModelSwitchState;
 use crate::agent::manifest::AgentManifest;
 use crate::agent::manifest_loader;
 use crate::agent::memory_loader::{DefaultMemoryLoader, ManifestMemoryLoader, MemoryLoader};
@@ -10,27 +10,59 @@ use crate::config::Config;
 use crate::i18n::ToolDescriptions;
 use crate::memory::{self, Memory, MemoryCategory};
 use crate::observability::{self, Observer, ObserverEvent};
-use crate::providers::{self, ChatMessage, ChatRequest, ConversationMessage, Provider};
+use crate::providers::{self, ChatMessage, Provider};
 use crate::runtime;
 use crate::security::SecurityPolicy;
 use crate::tools::{self, Tool, ToolSpec};
 use anyhow::Result;
 use std::collections::HashMap;
 use std::fmt::Write as FmtWrite;
-use std::io::Write as IoWrite;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ToolDispatchMode {
+    #[default]
+    Auto,
+    Native,
+    Xml,
+}
+
+impl ToolDispatchMode {
+    pub fn from_config_value(value: &str) -> Self {
+        match value {
+            "native" => Self::Native,
+            "xml" => Self::Xml,
+            _ => Self::Auto,
+        }
+    }
+
+    pub fn uses_native_tools(self, provider_supports_native_tools: bool, has_tools: bool) -> bool {
+        if !has_tools {
+            return false;
+        }
+
+        match self {
+            Self::Auto => provider_supports_native_tools,
+            Self::Native => true,
+            Self::Xml => false,
+        }
+    }
+}
+
 pub struct Agent {
     provider: Box<dyn Provider>,
+    provider_name: String,
     toolbox_manager: tools::ToolboxManager,
     memory: Arc<dyn Memory>,
     observer: Arc<dyn Observer>,
     prompt_builder: SystemPromptBuilder,
-    tool_dispatcher: Box<dyn ToolDispatcher>,
+    tool_dispatch_mode: ToolDispatchMode,
     memory_loader: Box<dyn MemoryLoader>,
     config: crate::config::AgentConfig,
+    multimodal_config: crate::config::MultimodalConfig,
+    pacing: crate::config::PacingConfig,
     model_name: String,
     temperature: f64,
     workspace_dir: std::path::PathBuf,
@@ -39,7 +71,7 @@ pub struct Agent {
     skills_prompt_mode: crate::config::SkillsPromptInjectionMode,
     auto_save: bool,
     memory_session_id: Option<String>,
-    history: Vec<ConversationMessage>,
+    history: Vec<ChatMessage>,
     classification_config: crate::config::QueryClassificationConfig,
     available_hints: Vec<String>,
     route_model_by_hint: HashMap<String, String>,
@@ -63,14 +95,17 @@ fn load_agent_manifest(workspace_dir: &Path) -> Result<Option<AgentManifest>> {
 
 pub struct AgentBuilder {
     provider: Option<Box<dyn Provider>>,
+    provider_name: Option<String>,
     tools: Option<Vec<Box<dyn Tool>>>,
     toolbox_manager: Option<tools::ToolboxManager>,
     memory: Option<Arc<dyn Memory>>,
     observer: Option<Arc<dyn Observer>>,
     prompt_builder: Option<SystemPromptBuilder>,
-    tool_dispatcher: Option<Box<dyn ToolDispatcher>>,
+    tool_dispatch_mode: Option<ToolDispatchMode>,
     memory_loader: Option<Box<dyn MemoryLoader>>,
     config: Option<crate::config::AgentConfig>,
+    multimodal_config: Option<crate::config::MultimodalConfig>,
+    pacing: Option<crate::config::PacingConfig>,
     model_name: Option<String>,
     temperature: Option<f64>,
     workspace_dir: Option<std::path::PathBuf>,
@@ -94,14 +129,17 @@ impl AgentBuilder {
     pub fn new() -> Self {
         Self {
             provider: None,
+            provider_name: None,
             tools: None,
             toolbox_manager: None,
             memory: None,
             observer: None,
             prompt_builder: None,
-            tool_dispatcher: None,
+            tool_dispatch_mode: None,
             memory_loader: None,
             config: None,
+            multimodal_config: None,
+            pacing: None,
             model_name: None,
             temperature: None,
             workspace_dir: None,
@@ -124,6 +162,11 @@ impl AgentBuilder {
 
     pub fn provider(mut self, provider: Box<dyn Provider>) -> Self {
         self.provider = Some(provider);
+        self
+    }
+
+    pub fn provider_name(mut self, provider_name: String) -> Self {
+        self.provider_name = Some(provider_name);
         self
     }
 
@@ -152,8 +195,8 @@ impl AgentBuilder {
         self
     }
 
-    pub fn tool_dispatcher(mut self, tool_dispatcher: Box<dyn ToolDispatcher>) -> Self {
-        self.tool_dispatcher = Some(tool_dispatcher);
+    pub fn tool_dispatch_mode(mut self, tool_dispatch_mode: ToolDispatchMode) -> Self {
+        self.tool_dispatch_mode = Some(tool_dispatch_mode);
         self
     }
 
@@ -164,6 +207,16 @@ impl AgentBuilder {
 
     pub fn config(mut self, config: crate::config::AgentConfig) -> Self {
         self.config = Some(config);
+        self
+    }
+
+    pub fn multimodal_config(mut self, multimodal_config: crate::config::MultimodalConfig) -> Self {
+        self.multimodal_config = Some(multimodal_config);
+        self
+    }
+
+    pub fn pacing(mut self, pacing: crate::config::PacingConfig) -> Self {
+        self.pacing = Some(pacing);
         self
     }
 
@@ -327,6 +380,7 @@ impl AgentBuilder {
             provider: self
                 .provider
                 .ok_or_else(|| anyhow::anyhow!("provider is required"))?,
+            provider_name: self.provider_name.unwrap_or_else(|| "unknown".into()),
             toolbox_manager,
             memory: self
                 .memory
@@ -337,11 +391,11 @@ impl AgentBuilder {
             prompt_builder: self
                 .prompt_builder
                 .unwrap_or_else(SystemPromptBuilder::with_defaults),
-            tool_dispatcher: self
-                .tool_dispatcher
-                .ok_or_else(|| anyhow::anyhow!("tool_dispatcher is required"))?,
+            tool_dispatch_mode: self.tool_dispatch_mode.unwrap_or_default(),
             memory_loader: self.memory_loader.unwrap_or(default_memory_loader),
             config: self.config.unwrap_or_default(),
+            multimodal_config: self.multimodal_config.unwrap_or_default(),
+            pacing: self.pacing.unwrap_or_default(),
             model_name: self
                 .model_name
                 .unwrap_or_else(|| "anthropic/claude-sonnet-4-20250514".into()),
@@ -374,7 +428,7 @@ impl Agent {
         AgentBuilder::new()
     }
 
-    pub fn history(&self) -> &[ConversationMessage] {
+    pub fn history(&self) -> &[ChatMessage] {
         &self.history
     }
 
@@ -397,7 +451,7 @@ impl Agent {
         }
         for msg in messages {
             if msg.role != "system" {
-                self.history.push(ConversationMessage::Chat(msg.clone()));
+                self.history.push(msg.clone());
             }
         }
     }
@@ -541,13 +595,7 @@ impl Agent {
             &provider_runtime_options,
         )?;
 
-        let dispatcher_choice = config.agent.tool_dispatcher.as_str();
-        let tool_dispatcher: Box<dyn ToolDispatcher> = match dispatcher_choice {
-            "native" => Box::new(NativeToolDispatcher),
-            "xml" => Box::new(XmlToolDispatcher),
-            _ if provider.supports_native_tools() => Box::new(NativeToolDispatcher),
-            _ => Box::new(XmlToolDispatcher),
-        };
+        let tool_dispatch_mode = ToolDispatchMode::from_config_value(&config.agent.tool_dispatcher);
 
         let route_model_by_hint: HashMap<String, String> = config
             .model_routes
@@ -571,17 +619,20 @@ impl Agent {
 
         let mut builder = Agent::builder()
             .provider(provider)
+            .provider_name(provider_name.to_string())
             .tools(tools)
             .memory(memory)
             .observer(observer)
             .response_cache(response_cache)
-            .tool_dispatcher(tool_dispatcher)
+            .tool_dispatch_mode(tool_dispatch_mode)
             .memory_loader(Box::new(DefaultMemoryLoader::new(
                 5,
                 config.memory.min_relevance_score,
             )))
             .prompt_builder(SystemPromptBuilder::with_defaults())
             .config(config.agent.clone())
+            .multimodal_config(config.multimodal.clone())
+            .pacing(config.pacing.clone())
             .model_name(model_name)
             .temperature(config.default_temperature)
             .workspace_dir(config.workspace_dir.clone())
@@ -604,59 +655,55 @@ impl Agent {
     }
 
     fn trim_history(&mut self) {
-        let max = self.config.max_history_messages;
-        if self.history.len() <= max {
-            return;
-        }
-
-        let mut system_messages = Vec::new();
-        let mut other_messages = Vec::new();
-
-        for msg in self.history.drain(..) {
-            match &msg {
-                ConversationMessage::Chat(chat) if chat.role == "system" => {
-                    system_messages.push(msg);
-                }
-                _ => other_messages.push(msg),
-            }
-        }
-
-        if other_messages.len() > max {
-            let drop_count = other_messages.len() - max;
-            other_messages.drain(0..drop_count);
-        }
-
-        self.history = system_messages;
-        self.history.extend(other_messages);
+        trim_chat_history(&mut self.history, self.config.max_history_messages);
     }
 
-    fn build_system_prompt(&self) -> Result<String> {
-        let active_tools = self.toolbox_manager.active_tools_boxed();
-        let instructions = self.tool_dispatcher.prompt_instructions(&active_tools);
-        let ctx = PromptContext {
-            workspace_dir: &self.workspace_dir,
-            model_name: &self.model_name,
-            tools: &active_tools,
-            skills: &self.skills,
-            skills_prompt_mode: self.skills_prompt_mode,
-            identity_config: Some(&self.identity_config),
-            manifest_identity_prompt: self
-                .manifest
-                .as_ref()
-                .and_then(|manifest| manifest.identity.system_prompt.as_deref()),
-            dispatcher_instructions: &instructions,
-            tool_descriptions: self.tool_descriptions.as_ref(),
-            security_summary: self.security_summary.clone(),
-            autonomy_level: self.autonomy_level,
+    fn build_system_prompt_for_state(
+        prompt_builder: &SystemPromptBuilder,
+        toolbox_manager: &tools::ToolboxManager,
+        workspace_dir: &Path,
+        model_name: &str,
+        skills: &[crate::skills::Skill],
+        skills_prompt_mode: crate::config::SkillsPromptInjectionMode,
+        identity_config: &crate::config::IdentityConfig,
+        tool_descriptions: Option<&ToolDescriptions>,
+        security_summary: Option<String>,
+        autonomy_level: crate::security::AutonomyLevel,
+        manifest: Option<&AgentManifest>,
+        tool_dispatch_mode: ToolDispatchMode,
+        provider_supports_native_tools: bool,
+    ) -> Result<String> {
+        let active_tools = toolbox_manager.active_tools_boxed();
+        let tool_specs = toolbox_manager.active_tool_specs();
+        let use_native_tools = tool_dispatch_mode
+            .uses_native_tools(provider_supports_native_tools, !tool_specs.is_empty());
+        let instructions = if use_native_tools {
+            String::new()
+        } else {
+            build_tool_instructions_from_specs(&tool_specs, tool_descriptions)
         };
-        let mut prompt = self.prompt_builder.build(&ctx)?;
-        let discovery_section = self.toolbox_manager.discovery_prompt_section();
+        let ctx = PromptContext {
+            workspace_dir,
+            model_name,
+            tools: &active_tools,
+            skills,
+            skills_prompt_mode,
+            identity_config: Some(identity_config),
+            manifest_identity_prompt: manifest
+                .and_then(|value| value.identity.system_prompt.as_deref()),
+            dispatcher_instructions: &instructions,
+            tool_descriptions,
+            security_summary,
+            autonomy_level,
+        };
+        let mut prompt = prompt_builder.build(&ctx)?;
+        let discovery_section = toolbox_manager.discovery_prompt_section();
         if !discovery_section.is_empty() {
             prompt.push('\n');
             prompt.push('\n');
             prompt.push_str(discovery_section.trim_end());
         }
-        if let Some(manifest) = self.manifest.as_ref() {
+        if let Some(manifest) = manifest {
             prompt.push_str("\n\n## Agent Manifest Identity\n\n");
             let name = manifest.identity.name.as_deref().unwrap_or("Unnamed agent");
             let role = manifest.identity.role.as_deref().unwrap_or("unspecified");
@@ -674,80 +721,35 @@ impl Agent {
         Ok(prompt)
     }
 
+    fn build_system_prompt(&self) -> Result<String> {
+        Self::build_system_prompt_for_state(
+            &self.prompt_builder,
+            &self.toolbox_manager,
+            &self.workspace_dir,
+            &self.model_name,
+            &self.skills,
+            self.skills_prompt_mode,
+            &self.identity_config,
+            self.tool_descriptions.as_ref(),
+            self.security_summary.clone(),
+            self.autonomy_level,
+            self.manifest.as_ref(),
+            self.tool_dispatch_mode,
+            self.provider.supports_native_tools(),
+        )
+    }
+
     fn ensure_current_system_prompt(&mut self) -> Result<()> {
         let system_prompt = self.build_system_prompt()?;
         match self.history.first_mut() {
-            Some(ConversationMessage::Chat(chat)) if chat.role == "system" => {
-                chat.content = system_prompt;
-            }
-            _ => self.history.insert(
-                0,
-                ConversationMessage::Chat(ChatMessage::system(system_prompt)),
-            ),
+            Some(chat) if chat.role == "system" => chat.content = system_prompt,
+            _ => self.history.insert(0, ChatMessage::system(system_prompt)),
         }
         Ok(())
     }
 
     fn current_tool_specs(&self) -> Vec<ToolSpec> {
         self.toolbox_manager.active_tool_specs()
-    }
-
-    async fn execute_tool_call(&self, call: &ParsedToolCall) -> ToolExecutionResult {
-        let start = Instant::now();
-
-        let result = if let Some(tool) = self.toolbox_manager.active_tool(&call.name) {
-            match tool.execute(call.arguments.clone()).await {
-                Ok(r) => {
-                    self.observer.record_event(&ObserverEvent::ToolCall {
-                        tool: call.name.clone(),
-                        duration: start.elapsed(),
-                        success: r.success,
-                    });
-                    if r.success {
-                        r.output
-                    } else {
-                        format!("Error: {}", r.error.unwrap_or(r.output))
-                    }
-                }
-                Err(e) => {
-                    self.observer.record_event(&ObserverEvent::ToolCall {
-                        tool: call.name.clone(),
-                        duration: start.elapsed(),
-                        success: false,
-                    });
-                    format!("Error executing {}: {e}", call.name)
-                }
-            }
-        } else {
-            format!("Unknown tool: {}", call.name)
-        };
-
-        ToolExecutionResult {
-            name: call.name.clone(),
-            output: result,
-            success: true,
-            tool_call_id: call.tool_call_id.clone(),
-        }
-    }
-
-    async fn execute_tools(&self, calls: &[ParsedToolCall]) -> Vec<ToolExecutionResult> {
-        if !self.config.parallel_tools
-            || calls
-                .iter()
-                .any(|call| matches!(call.name.as_str(), "tool_discovery" | "tool_search"))
-        {
-            let mut results = Vec::with_capacity(calls.len());
-            for call in calls {
-                results.push(self.execute_tool_call(call).await);
-            }
-            return results;
-        }
-
-        let futs: Vec<_> = calls
-            .iter()
-            .map(|call| self.execute_tool_call(call))
-            .collect();
-        futures_util::future::join_all(futs).await
     }
 
     fn classify_model(&self, user_message: &str) -> String {
@@ -808,129 +810,128 @@ impl Agent {
             format!("{context}[{now}] {user_message}")
         };
 
-        self.history
-            .push(ConversationMessage::Chat(ChatMessage::user(enriched)));
+        self.history.push(ChatMessage::user(enriched));
 
         let effective_model = self.classify_model(user_message);
-
-        for _ in 0..self.config.max_tool_iterations {
-            self.ensure_current_system_prompt()?;
-            let messages = self.tool_dispatcher.to_provider_messages(&self.history);
-            let current_tool_specs = self.current_tool_specs();
-
-            // Response cache: check before LLM call (only for deterministic, text-only prompts)
-            let cache_key = if self.temperature == 0.0 {
-                self.response_cache.as_ref().map(|_| {
-                    let last_user = messages
-                        .iter()
-                        .rfind(|m| m.role == "user")
-                        .map(|m| m.content.as_str())
-                        .unwrap_or("");
-                    let system = messages
-                        .iter()
-                        .find(|m| m.role == "system")
-                        .map(|m| m.content.as_str());
-                    crate::memory::response_cache::ResponseCache::cache_key(
-                        &effective_model,
-                        system,
-                        last_user,
-                    )
-                })
-            } else {
-                None
-            };
-
-            if let (Some(ref cache), Some(ref key)) = (&self.response_cache, &cache_key) {
-                if let Ok(Some(cached)) = cache.get(key) {
-                    self.observer.record_event(&ObserverEvent::CacheHit {
-                        cache_type: "response".into(),
-                        tokens_saved: 0,
-                    });
-                    self.history
-                        .push(ConversationMessage::Chat(ChatMessage::assistant(
-                            cached.clone(),
-                        )));
-                    self.trim_history();
-                    return Ok(cached);
-                }
-                self.observer.record_event(&ObserverEvent::CacheMiss {
-                    cache_type: "response".into(),
-                });
-            }
-
-            let response = match self
-                .provider
-                .chat(
-                    ChatRequest {
-                        messages: &messages,
-                        tools: if self.tool_dispatcher.should_send_tool_specs() {
-                            Some(current_tool_specs.as_slice())
-                        } else {
-                            None
-                        },
-                    },
+        let cache_key = if self.temperature == 0.0 {
+            self.response_cache.as_ref().map(|_| {
+                let last_user = self
+                    .history
+                    .iter()
+                    .rfind(|m| m.role == "user")
+                    .map(|m| m.content.as_str())
+                    .unwrap_or("");
+                let system = self
+                    .history
+                    .iter()
+                    .find(|m| m.role == "system")
+                    .map(|m| m.content.as_str());
+                crate::memory::response_cache::ResponseCache::cache_key(
                     &effective_model,
-                    self.temperature,
+                    system,
+                    last_user,
                 )
-                .await
-            {
-                Ok(resp) => resp,
-                Err(err) => return Err(err),
-            };
+            })
+        } else {
+            None
+        };
 
-            let (text, calls) = self.tool_dispatcher.parse_response(&response);
-            if calls.is_empty() {
-                let final_text = if text.is_empty() {
-                    response.text.unwrap_or_default()
-                } else {
-                    text
-                };
-
-                // Store in response cache (text-only, no tool calls)
-                if let (Some(ref cache), Some(ref key)) = (&self.response_cache, &cache_key) {
-                    let token_count = response
-                        .usage
-                        .as_ref()
-                        .and_then(|u| u.output_tokens)
-                        .unwrap_or(0);
-                    #[allow(clippy::cast_possible_truncation)]
-                    let _ = cache.put(key, &effective_model, &final_text, token_count as u32);
-                }
-
-                self.history
-                    .push(ConversationMessage::Chat(ChatMessage::assistant(
-                        final_text.clone(),
-                    )));
+        if let (Some(ref cache), Some(ref key)) = (&self.response_cache, &cache_key) {
+            if let Ok(Some(cached)) = cache.get(key) {
+                self.observer.record_event(&ObserverEvent::CacheHit {
+                    cache_type: "response".into(),
+                    tokens_saved: 0,
+                });
+                self.history.push(ChatMessage::assistant(cached.clone()));
                 self.trim_history();
-
-                return Ok(final_text);
+                return Ok(cached);
             }
-
-            if !text.is_empty() {
-                self.history
-                    .push(ConversationMessage::Chat(ChatMessage::assistant(
-                        text.clone(),
-                    )));
-                print!("{text}");
-                let _ = std::io::stdout().flush();
-            }
-
-            self.history.push(ConversationMessage::AssistantToolCalls {
-                text: response.text.clone(),
-                tool_calls: response.tool_calls.clone(),
-                reasoning_content: response.reasoning_content.clone(),
+            self.observer.record_event(&ObserverEvent::CacheMiss {
+                cache_type: "response".into(),
             });
-
-            let results = self.execute_tools(&calls).await;
-            let formatted = self.tool_dispatcher.format_results(&results);
-            self.history.push(formatted);
-            self.trim_history();
         }
 
-        anyhow::bail!(
-            "Agent exceeded maximum tool iterations ({})",
-            self.config.max_tool_iterations
+        self.ensure_current_system_prompt()?;
+
+        let prompt_builder = &self.prompt_builder;
+        let toolbox_manager = &self.toolbox_manager;
+        let workspace_dir = self.workspace_dir.clone();
+        let model_name = self.model_name.clone();
+        let skills = &self.skills;
+        let skills_prompt_mode = self.skills_prompt_mode;
+        let identity_config = &self.identity_config;
+        let tool_descriptions = self.tool_descriptions.as_ref();
+        let security_summary = self.security_summary.clone();
+        let autonomy_level = self.autonomy_level;
+        let manifest = self.manifest.as_ref();
+        let tool_dispatch_mode = self.tool_dispatch_mode;
+        let provider_supports_native_tools = self.provider.supports_native_tools();
+        let prompt_renderer = || {
+            Self::build_system_prompt_for_state(
+                prompt_builder,
+                toolbox_manager,
+                &workspace_dir,
+                &model_name,
+                skills,
+                skills_prompt_mode,
+                identity_config,
+                tool_descriptions,
+                security_summary.clone(),
+                autonomy_level,
+                manifest,
+                tool_dispatch_mode,
+                provider_supports_native_tools,
+            )
+            .unwrap_or_else(|err| {
+                tracing::error!(error = %err, "Failed to build agent system prompt");
+                String::new()
+            })
+        };
+        let empty_tools: &[Box<dyn Tool>] = &[];
+        let dedup_exempt_tools = self.config.tool_call_dedup_exempt.clone();
+        let history_len_before_loop = self.history.len();
+        let response = run_tool_call_loop_with_policy(
+            self.provider.as_ref(),
+            &mut self.history,
+            empty_tools,
+            Some(&self.toolbox_manager),
+            self.observer.as_ref(),
+            &self.provider_name,
+            &effective_model,
+            self.temperature,
+            false,
+            None,
+            "agent",
+            None,
+            &self.multimodal_config,
+            self.config.max_tool_iterations,
+            None,
+            None,
+            None,
+            &[],
+            &dedup_exempt_tools,
+            None,
+            None,
+            Some(&prompt_renderer),
+            &self.pacing,
+            self.config.parallel_tools,
+            self.tool_dispatch_mode,
         )
+        .await?;
+
+        let used_tools = self.history[history_len_before_loop..].iter().any(|msg| {
+            msg.role == "tool"
+                || (msg.role == "user" && msg.content.starts_with("[Tool results]\n"))
+        });
+
+        if !used_tools {
+            if let (Some(ref cache), Some(ref key)) = (&self.response_cache, &cache_key) {
+                let _ = cache.put(key, &effective_model, &response, 0);
+            }
+        }
+
+        self.trim_history();
+        Ok(response)
     }
 
     pub async fn run_single(&mut self, message: &str) -> Result<String> {
@@ -1025,6 +1026,7 @@ mod tests {
     use parking_lot::Mutex;
     use std::collections::HashMap;
     use tempfile::tempdir;
+    use crate::providers::ChatRequest;
 
     struct MockProvider {
         responses: Mutex<Vec<crate::providers::ChatResponse>>,
@@ -1217,7 +1219,7 @@ mod tests {
             .tools(vec![Box::new(MockTool)])
             .memory(mem)
             .observer(observer)
-            .tool_dispatcher(Box::new(XmlToolDispatcher))
+            .tool_dispatch_mode(ToolDispatchMode::Xml)
             .workspace_dir(std::path::PathBuf::from("/tmp"))
             .build()
             .expect("agent builder should succeed with valid config");
@@ -1264,7 +1266,7 @@ mod tests {
             .tools(vec![Box::new(MockTool)])
             .memory(mem)
             .observer(observer)
-            .tool_dispatcher(Box::new(NativeToolDispatcher))
+            .tool_dispatch_mode(ToolDispatchMode::Native)
             .workspace_dir(std::path::PathBuf::from("/tmp"))
             .build()
             .expect("agent builder should succeed with valid config");
@@ -1274,7 +1276,7 @@ mod tests {
         assert!(agent
             .history()
             .iter()
-            .any(|msg| matches!(msg, ConversationMessage::ToolResults(_))));
+            .any(|msg| msg.role == "tool"));
     }
 
     #[tokio::test]
@@ -1332,7 +1334,7 @@ mod tests {
             .tools(vec![Box::new(MockTool)])
             .memory(mem)
             .observer(observer)
-            .tool_dispatcher(Box::new(NativeToolDispatcher))
+            .tool_dispatch_mode(ToolDispatchMode::Native)
             .workspace_dir(std::path::PathBuf::from("/tmp"))
             .manifest(manifest)
             .build()
@@ -1380,7 +1382,7 @@ mod tests {
             .tools(vec![Box::new(MockTool)])
             .memory(mem)
             .observer(observer)
-            .tool_dispatcher(Box::new(NativeToolDispatcher))
+            .tool_dispatch_mode(ToolDispatchMode::Native)
             .workspace_dir(std::path::PathBuf::from("/tmp"))
             .classification_config(crate::config::QueryClassificationConfig {
                 enabled: true,
@@ -1513,7 +1515,7 @@ mod tests {
             .tools(vec![Box::new(MockTool)])
             .memory(mem)
             .observer(observer)
-            .tool_dispatcher(Box::new(NativeToolDispatcher))
+            .tool_dispatch_mode(ToolDispatchMode::Native)
             .workspace_dir(std::path::PathBuf::from("/tmp"))
             .allowed_tools(None)
             .build()
@@ -1546,7 +1548,7 @@ mod tests {
             .tools(vec![Box::new(MockTool)])
             .memory(mem)
             .observer(observer)
-            .tool_dispatcher(Box::new(NativeToolDispatcher))
+            .tool_dispatch_mode(ToolDispatchMode::Native)
             .workspace_dir(std::path::PathBuf::from("/tmp"))
             .allowed_tools(Some(vec!["nonexistent".to_string()]))
             .build()
@@ -1593,7 +1595,7 @@ mod tests {
             .tools(vec![Box::new(MockTool), Box::new(MockOtherTool)])
             .memory(mem)
             .observer(observer)
-            .tool_dispatcher(Box::new(NativeToolDispatcher))
+            .tool_dispatch_mode(ToolDispatchMode::Native)
             .workspace_dir(std::path::PathBuf::from("/tmp"))
             .allowed_tools(Some(vec!["echo".to_string(), "file_list".to_string()]))
             .manifest(manifest)
@@ -1651,7 +1653,7 @@ mod tests {
             .tools(vec![Box::new(MockTool)])
             .memory(mem)
             .observer(observer)
-            .tool_dispatcher(Box::new(NativeToolDispatcher))
+            .tool_dispatch_mode(ToolDispatchMode::Native)
             .workspace_dir(workspace)
             .manifest(manifest)
             .build()
@@ -1684,7 +1686,7 @@ mod tests {
             .tools(vec![Box::new(MockTool)])
             .memory(mem)
             .observer(observer)
-            .tool_dispatcher(Box::new(NativeToolDispatcher))
+            .tool_dispatch_mode(ToolDispatchMode::Native)
             .workspace_dir(std::path::PathBuf::from("/tmp"))
             .build()
             .expect("agent builder should succeed with valid config");
@@ -1698,14 +1700,12 @@ mod tests {
 
         let history = agent.history();
         // First message should be a freshly built system prompt (not the seed one)
-        assert!(matches!(&history[0], ConversationMessage::Chat(m) if m.role == "system"));
+        assert_eq!(history[0].role, "system");
         // System message from seed should be skipped, so next is user
-        assert!(
-            matches!(&history[1], ConversationMessage::Chat(m) if m.role == "user" && m.content == "hello")
-        );
-        assert!(
-            matches!(&history[2], ConversationMessage::Chat(m) if m.role == "assistant" && m.content == "hi there")
-        );
+        assert_eq!(history[1].role, "user");
+        assert_eq!(history[1].content, "hello");
+        assert_eq!(history[2].role, "assistant");
+        assert_eq!(history[2].content, "hi there");
         assert_eq!(history.len(), 3);
     }
 
