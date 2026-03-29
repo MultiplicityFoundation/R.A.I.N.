@@ -321,6 +321,28 @@ async fn channels_config_default() {
     assert!(!c.show_tool_calls);
 }
 
+#[test]
+async fn channels_module_exports_config_types() {
+    let c = super::channels::ChannelsConfig::default();
+    let _ = std::mem::size_of::<super::channels::TelegramConfig>();
+    assert!(c.cli);
+}
+
+#[test]
+async fn proxy_module_exports_runtime_types() {
+    let proxy = super::proxy::ProxyConfig::default();
+    let _ = std::mem::size_of::<super::proxy::RuntimeProxyStateHandle>();
+    assert_eq!(proxy.scope, super::proxy::ProxyScope::Rain);
+}
+
+#[test]
+async fn security_module_exports_config_types() {
+    let security = super::security::SecurityConfig::default();
+    let _ = std::mem::size_of::<super::security::NotionConfig>();
+    let _ = std::mem::size_of::<super::security::JiraConfig>();
+    assert_eq!(security.otp.method, super::security::OtpMethod::Totp);
+}
+
 // ── Serde round-trip ─────────────────────────────────────
 
 #[test]
