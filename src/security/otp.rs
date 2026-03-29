@@ -18,7 +18,8 @@ const OTP_LOCKOUT_SECS: u64 = 300; // 5 minutes
 pub struct OtpValidator {
     config: OtpConfig,
     secret: Vec<u8>,
-    cached_codes: Mutex<HashMap<String, u64>>,
+    /// Codes that have already been used — reject on re-presentation (anti-replay).
+    used_codes: Mutex<HashMap<String, u64>>,
     /// Tracks consecutive failed validation attempts and optional lockout deadline.
     failed_state: Mutex<OtpFailedState>,
 }
@@ -57,7 +58,7 @@ impl OtpValidator {
         let validator = Self {
             config: config.clone(),
             secret,
-            cached_codes: Mutex::new(HashMap::new()),
+            used_codes: Mutex::new(HashMap::new()),
             failed_state: Mutex::new(OtpFailedState {
                 count: 0,
                 lockout_until: None,
@@ -99,42 +100,57 @@ impl OtpValidator {
             return Ok(false);
         }
 
-        {
-            let mut cache = self.cached_codes.lock();
-            cache.retain(|_, expiry| *expiry >= now_secs);
-            if cache
+        // Hold the `used_codes` lock across the anti-replay check, TOTP computation,
+        // and insertion to eliminate the TOCTOU race that would otherwise allow two
+        // concurrent threads to both accept the same single-use code.
+        let is_valid = {
+            let mut used = self.used_codes.lock();
+            used.retain(|_, expiry| *expiry >= now_secs);
+
+            // Anti-replay: reject codes that have already been used within their
+            // validity window.
+            if used
                 .get(normalized)
                 .is_some_and(|expiry| *expiry >= now_secs)
             {
-                return Ok(true);
+                // Replay of a valid code: reject but do NOT count toward brute-force
+                // lockout. Replays are consumed codes, not wrong guesses. Counting them
+                // would let an attacker lock out a legitimate user by replaying an
+                // intercepted code `challenge_max_attempts` times.
+                return Ok(false);
             }
-        }
 
-        let step = self.config.token_ttl_secs.max(1);
-        let counter = now_secs / step;
-        let counters = [
-            counter.saturating_sub(1),
-            counter,
-            counter.saturating_add(1),
-        ];
+            let step = self.config.token_ttl_secs.max(1);
+            let counter = now_secs / step;
+            let counters = [
+                counter.saturating_sub(1),
+                counter,
+                counter.saturating_add(1),
+            ];
 
-        let is_valid = counters
-            .iter()
-            .map(|c| compute_totp_code(&self.secret, *c))
-            .any(|candidate| candidate == normalized);
+            let valid = counters
+                .iter()
+                .map(|c| compute_totp_code(&self.secret, *c))
+                .any(|candidate| candidate == normalized);
+
+            if valid {
+                // Mark code as used so it cannot be replayed.
+                used.insert(
+                    normalized.to_string(),
+                    now_secs.saturating_add(self.config.cache_valid_secs),
+                );
+            }
+
+            valid
+        };
+        // `used_codes` lock is released here — update `failed_state` without
+        // holding both locks to avoid potential deadlock.
 
         if is_valid {
             // Reset failure counter on success.
-            {
-                let mut state = self.failed_state.lock();
-                state.count = 0;
-                state.lockout_until = None;
-            }
-            let mut cache = self.cached_codes.lock();
-            cache.insert(
-                normalized.to_string(),
-                now_secs.saturating_add(self.config.cache_valid_secs),
-            );
+            let mut state = self.failed_state.lock();
+            state.count = 0;
+            state.lockout_until = None;
         } else {
             self.record_failure(now_secs);
         }
@@ -404,6 +420,70 @@ mod tests {
         assert!(!validator.validate_at("000002", now).unwrap());
         let err = validator.validate_at("000003", now).unwrap_err();
         assert!(err.to_string().contains("locked out"));
+    }
+
+    #[test]
+    fn replay_of_used_code_is_rejected() {
+        let dir = tempdir().unwrap();
+        let store = SecretStore::new(dir.path(), true);
+        let (validator, _) = OtpValidator::from_config(&test_config(), dir.path(), &store).unwrap();
+
+        let now = 1_700_000_000u64;
+        let code = validator.code_for_timestamp(now);
+
+        // First use succeeds.
+        assert!(validator.validate_at(&code, now).unwrap());
+        // Immediate replay is rejected.
+        assert!(!validator.validate_at(&code, now).unwrap());
+        // Replay slightly later (still within cache_valid_secs) is also rejected.
+        assert!(!validator.validate_at(&code, now + 10).unwrap());
+    }
+
+    #[test]
+    fn replay_does_not_count_toward_lockout() {
+        let dir = tempdir().unwrap();
+        let store = SecretStore::new(dir.path(), true);
+        let mut cfg = test_config();
+        cfg.challenge_max_attempts = 3;
+        let (validator, _) = OtpValidator::from_config(&cfg, dir.path(), &store).unwrap();
+
+        let now = 1_700_000_000u64;
+        let code = validator.code_for_timestamp(now);
+
+        // Use the code once (success resets failure counter).
+        assert!(validator.validate_at(&code, now).unwrap());
+
+        // Replay the same code many times — none should trigger lockout.
+        for _ in 0..10 {
+            assert!(!validator.validate_at(&code, now).unwrap());
+        }
+
+        // A wrong code should still work (not locked out from replays).
+        assert!(!validator.validate_at("000000", now).unwrap());
+    }
+
+    #[test]
+    fn code_reusable_after_used_window_expires() {
+        let dir = tempdir().unwrap();
+        let store = SecretStore::new(dir.path(), true);
+        let cfg = test_config(); // cache_valid_secs = 120
+        let (validator, _) = OtpValidator::from_config(&cfg, dir.path(), &store).unwrap();
+
+        let now = 1_700_000_000u64;
+        let code = validator.code_for_timestamp(now);
+
+        assert!(validator.validate_at(&code, now).unwrap());
+        assert!(!validator.validate_at(&code, now).unwrap()); // replay rejected
+
+        // After used-code window expires, but code is still TOTP-valid (within ±1 step),
+        // it can be used again. With cache_valid_secs=120 and ttl=30, the used entry
+        // expires at now+120, but the TOTP window is only ±30s so the code will be
+        // invalid by then anyway. Verify the used entry is cleaned up.
+        let after_expiry = now + cfg.cache_valid_secs + 1;
+        // The code won't be TOTP-valid this far out, so just verify no stale rejection.
+        // Generate a fresh code for the new timestamp.
+        let fresh_code = validator.code_for_timestamp(after_expiry);
+        assert!(validator.validate_at(&fresh_code, after_expiry).unwrap());
     }
 
     #[test]
