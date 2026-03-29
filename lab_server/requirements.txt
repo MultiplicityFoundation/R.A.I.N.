@@ -1,0 +1,7 @@
+# R.A.I.N. Lab web server dependencies
+# Install: pip install -r lab_server/requirements.txt
+fastapi>=0.111.0,<1.0.0
+uvicorn[standard]>=0.29.0,<1.0.0
+# Repo runtime deps (subset required for run_rain_lab)
+openai>=1.0.0,<3.0.0
+pyyaml>=6.0,<7.0.0
