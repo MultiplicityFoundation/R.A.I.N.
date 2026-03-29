@@ -100,10 +100,15 @@ impl OtpValidator {
             return Ok(false);
         }
 
-        // Anti-replay: reject codes that have already been used within their validity window.
-        {
+        // Hold the `used_codes` lock across the anti-replay check, TOTP computation,
+        // and insertion to eliminate the TOCTOU race that would otherwise allow two
+        // concurrent threads to both accept the same single-use code.
+        let is_valid = {
             let mut used = self.used_codes.lock();
             used.retain(|_, expiry| *expiry >= now_secs);
+
+            // Anti-replay: reject codes that have already been used within their
+            // validity window.
             if used
                 .get(normalized)
                 .is_some_and(|expiry| *expiry >= now_secs)
@@ -114,34 +119,38 @@ impl OtpValidator {
                 // intercepted code `challenge_max_attempts` times.
                 return Ok(false);
             }
-        }
 
-        let step = self.config.token_ttl_secs.max(1);
-        let counter = now_secs / step;
-        let counters = [
-            counter.saturating_sub(1),
-            counter,
-            counter.saturating_add(1),
-        ];
+            let step = self.config.token_ttl_secs.max(1);
+            let counter = now_secs / step;
+            let counters = [
+                counter.saturating_sub(1),
+                counter,
+                counter.saturating_add(1),
+            ];
 
-        let is_valid = counters
-            .iter()
-            .map(|c| compute_totp_code(&self.secret, *c))
-            .any(|candidate| candidate == normalized);
+            let valid = counters
+                .iter()
+                .map(|c| compute_totp_code(&self.secret, *c))
+                .any(|candidate| candidate == normalized);
+
+            if valid {
+                // Mark code as used so it cannot be replayed.
+                used.insert(
+                    normalized.to_string(),
+                    now_secs.saturating_add(self.config.cache_valid_secs),
+                );
+            }
+
+            valid
+        };
+        // `used_codes` lock is released here — update `failed_state` without
+        // holding both locks to avoid potential deadlock.
 
         if is_valid {
             // Reset failure counter on success.
-            {
-                let mut state = self.failed_state.lock();
-                state.count = 0;
-                state.lockout_until = None;
-            }
-            // Mark code as used so it cannot be replayed.
-            let mut used = self.used_codes.lock();
-            used.insert(
-                normalized.to_string(),
-                now_secs.saturating_add(self.config.cache_valid_secs),
-            );
+            let mut state = self.failed_state.lock();
+            state.count = 0;
+            state.lockout_until = None;
         } else {
             self.record_failure(now_secs);
         }
