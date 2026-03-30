@@ -143,10 +143,16 @@ fn rain_bench_tempfile_cleanup() {
         // SqliteMemory creates the DB at <workspace>/memory/brain.db
         db_path = tmp.path().join("memory").join("brain.db");
         let _mem = SqliteMemory::new(tmp.path()).unwrap();
-        assert!(db_path.exists(), "memory/brain.db should exist while TempDir is alive");
+        assert!(
+            db_path.exists(),
+            "memory/brain.db should exist while TempDir is alive"
+        );
         // TempDir drops here
     }
-    assert!(!db_path.exists(), "memory/brain.db should be deleted after TempDir is dropped");
+    assert!(
+        !db_path.exists(),
+        "memory/brain.db should be deleted after TempDir is dropped"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -231,7 +237,10 @@ async fn rain_bench_empty_recall_returns_empty() {
         .recall("anything", 10, Some("empty_session"), None, None)
         .await
         .unwrap();
-    assert!(entries.is_empty(), "recall on empty DB should return empty vec");
+    assert!(
+        entries.is_empty(),
+        "recall on empty DB should return empty vec"
+    );
 }
 
 // ---------------------------------------------------------------------------
