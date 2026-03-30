@@ -24,17 +24,17 @@
 The R.A.I.N. Lab gives you a team of agentic AI experts to test ideas, compare viewpoints, and get deeper answers. 
 Everything runs directly on your own computer, if you like, so your ideas stay yours.
 
-## Who It Is For
+## Who It Is For?
 
 Host a private debate on your computer to test your ideas—complete with a built-in referee that fact-checks them when they get stuck.
 
 | Role | What you can do with R.A.I.N. Lab |
 | --- | --- |
-| Founders and product leaders | Stress-test strategy decisions with structured debate before committing roadmap or budget |
+| Founders and product leaders | Stress-test strategy decisions with structured debate before committing to the roadmap or budget |
 | Researchers and analysts | Compare competing hypotheses, preserve disagreement, and capture auditable reasoning trails |
 | Operators and technical teams | Turn messy discussions into verifiable outputs that can be reviewed, shared, and rerun |
 
-In practice, this means fewer "AI said so" dead ends. You can start from a single question, let multiple agents
+In practice, this means fewer "AI said so" dead ends. You can start from a single question, and let multiple agents
 challenge assumptions, route unresolved conflicts through verification, and leave with a result you can present to
 other people with confidence.
 
@@ -82,7 +82,7 @@ Beginner and demo runs generate:
 
 Use `python rain_lab.py --open-browser off` if you want to keep everything local without auto-opening pages.
 On Windows, `INSTALL_RAIN.cmd` also creates desktop and Start Menu shortcuts.
-On macOS/Linux, `./install.sh` is the equivalent one-click repo installer.
+On macOS/Linux, `./install.sh` is the equivalent of a one-click repo installer.
 
 ## Why People Use It
 
