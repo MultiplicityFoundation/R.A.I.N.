@@ -34,7 +34,7 @@ Host a private debate on your computer to test your ideas—complete with a buil
 | Researchers and analysts | Compare competing hypotheses, preserve disagreement, and capture auditable reasoning trails |
 | Operators and technical teams | Turn messy discussions into verifiable outputs that can be reviewed, shared, and rerun |
 
-In practice, this means fewer "AI said so" dead ends. You can start from a single question, and let multiple agents
+In practice, this means fewer dead ends. You can start from a single question, and let multiple agents
 challenge assumptions, route unresolved conflicts through verification, and leave with a result you can present to
 other people with confidence.
 
