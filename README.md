@@ -20,13 +20,15 @@
   <a href="README.vi.md">Tiếng Việt</a>
 </p>
 
+R.A.I.N. Lab is a private multi-agent research assistant for exploring hard questions, testing ideas, and comparing viewpoints without handing your thinking to a third-party platform.
 
-The R.A.I.N. Lab gives you a team of insightful experts to test ideas, compare viewpoints, and get deeper answers. 
-Everything runs directly on your own computer, if you like, so your ideas stay yours.
+Its flagship strength is deep technical exploration, especially sound, resonance, and physics workflows, but the same system is built to support broader research, strategy, and analytical work.
+
+If you want to start right away, open it with `python rain_lab.py`.
 
 ## Who Is It For?
 
-Host a private debate on your computer to test your ideas—complete with a built-in referee that fact-checks them when they get stuck.
+Use it when one answer is not enough, you want multiple agents to challenge the problem, and you need a private workspace that can handle both general research and technical deep dives.
 
 | Role | What you can do with R.A.I.N. Lab |
 | --- | --- |
@@ -86,8 +88,9 @@ On macOS/Linux, `./install.sh` is the equivalent of a one-click repo installer.
 ## Why People Use It
 
 - Local-first by default: conversations, archives, and outputs stay on your machine unless you opt into a provider.
+- Private multi-agent research workflow: compare viewpoints, preserve disagreement, and push past the single-answer chat pattern.
+- Flagship technical wedge: especially strong for sound, resonance, and physics exploration where competing models and reasoning trails matter.
 - Beginner-friendly front door: `python rain_lab.py` opens the guided launcher, and the instant demo works without a model.
-- Structured reasoning: R.A.I.N. Lab can debate, compare, and resolve disagreements instead of just generating plausible text.
 - Shareable outputs: beginner and demo sessions end in polished artifacts people can screenshot, revisit, and pass around.
 
 ## Pick A Path
