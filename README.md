@@ -89,7 +89,7 @@ On macOS/Linux, `./install.sh` is the equivalent of a one-click repo installer.
 
 - Local-first by default: conversations, archives, and outputs stay on your machine unless you opt into a provider.
 - Private multi-agent research workflow: compare viewpoints, preserve disagreement, and push past the single-answer chat pattern.
-- Flagship technical wedge: especially strong for sound, resonance, and physics exploration where competing models and reasoning trails matter.
+- Flagship technical wedge: especially strong for sound, resonance, and physics exploration, where competing models and reasoning trails matter.
 - Beginner-friendly front door: `python rain_lab.py` opens the guided launcher, and the instant demo works without a model.
 - Shareable outputs: beginner and demo sessions end in polished artifacts people can screenshot, revisit, and pass around.
 
@@ -165,6 +165,7 @@ Use the focused docs below depending on what you need:
 - [One-Click Bootstrap](docs/one-click-bootstrap.md) for setup automation
 - [Releases Page](https://github.com/topherchris420/james_library/releases) for prebuilt packages
 - [Troubleshooting](docs/troubleshooting.md) if something fails
+- [Research](https://topherchris420.github.io/research/)
 
 ## The Layers
 
