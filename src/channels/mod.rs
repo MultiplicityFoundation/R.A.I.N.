@@ -50,6 +50,8 @@ pub mod slack;
 mod startup;
 pub mod telegram;
 pub mod traits;
+
+pub(crate) mod provider;
 pub mod transcription;
 pub mod tts;
 pub mod twitter;
@@ -288,12 +290,12 @@ pub(crate) enum ChannelRuntimeCommand {
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
-struct ModelCacheState {
+pub(crate) struct ModelCacheState {
     entries: Vec<ModelCacheEntry>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
-struct ModelCacheEntry {
+pub(crate) struct ModelCacheEntry {
     provider: String,
     models: Vec<String>,
 }
