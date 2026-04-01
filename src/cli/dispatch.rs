@@ -22,7 +22,9 @@ fn confirm_update(force: bool) -> Result<bool> {
 
 pub(crate) async fn dispatch_command(command: Commands, config: Config) -> Result<()> {
     match command {
-        Commands::Onboard { .. } | Commands::Completions { .. } => unreachable!(),
+        Commands::Onboard { .. } | Commands::Completions { .. } | Commands::LspQuery => {
+            unreachable!()
+        }
 
         Commands::Agent {
             message,

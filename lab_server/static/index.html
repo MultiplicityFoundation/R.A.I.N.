@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>R.A.I.N. Lab — Debate any idea with James</title>
+  <title>R.A.I.N. Lab - Local-first autonomous coding agent runtime</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -34,6 +34,7 @@
     header {
       text-align: center;
       margin-bottom: 2.5rem;
+      max-width: 920px;
     }
 
     .logo {
@@ -45,19 +46,28 @@
     }
 
     h1 {
-      font-size: clamp(1.6rem, 4vw, 2.4rem);
+      font-size: clamp(1.6rem, 4vw, 2.7rem);
       font-weight: 700;
       background: linear-gradient(90deg, var(--cyan), var(--magenta));
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
-      line-height: 1.2;
+      line-height: 1.15;
     }
 
     .tagline {
-      margin-top: 0.6rem;
+      margin-top: 0.75rem;
+      color: var(--text);
+      font-size: 1rem;
+      line-height: 1.6;
+    }
+
+    .subcopy {
+      margin-top: 1rem;
       color: var(--muted);
       font-size: 0.95rem;
+      line-height: 1.7;
+      max-width: 760px;
     }
 
     .card {
@@ -121,7 +131,7 @@
     .preset-btn.active {
       border-color: var(--cyan);
       color: var(--cyan);
-      background: rgba(34,211,238,0.06);
+      background: rgba(34, 211, 238, 0.06);
     }
 
     .preset-btn .preset-icon { margin-right: 0.3rem; }
@@ -218,18 +228,22 @@
 <body>
 
 <header>
-  <div class="logo">R.A.I.N. Lab &mdash; vers3dynamics</div>
-  <h1>Debate any idea with James</h1>
-  <p class="tagline">Local AI agents. Multiple perspectives. 60 seconds.</p>
+  <div class="logo">R.A.I.N. Lab - vers3dynamics</div>
+  <h1>The local-first autonomous coding agent for Rust, Python, and hardware teams</h1>
+  <p class="tagline">Code-aware agents, long-loop context control, and safer autonomous workflows on your own machine.</p>
+  <p class="subcopy">
+    Give James a real engineering question. The agents inspect the task from multiple angles,
+    pressure-test weak spots, and return something you can actually use.
+  </p>
 </header>
 
 <div class="card">
   <form id="form">
-    <label for="topic">Your topic or question</label>
+    <label for="topic">Your engineering task or question</label>
     <textarea
       id="topic"
       name="topic"
-      placeholder="e.g. Should every startup raise venture capital?"
+      placeholder="e.g. Inspect src/agent/history.rs and explain how the long-loop memory path works."
       maxlength="500"
       required
     ></textarea>
@@ -238,13 +252,13 @@
       <label>Choose a mode</label>
       <div class="presets">
         <button type="button" class="preset-btn active" data-preset="startup-debate">
-          <span class="preset-icon">⚔️</span> Startup Debate
+          <span class="preset-icon">⚔️</span> Architecture Review
         </button>
         <button type="button" class="preset-btn" data-preset="idea-roast">
-          <span class="preset-icon">🔥</span> Roast My Idea
+          <span class="preset-icon">🔥</span> Break My Plan
         </button>
         <button type="button" class="preset-btn" data-preset="explain-like-im-12">
-          <span class="preset-icon">🧠</span> Explain It Simply
+          <span class="preset-icon">🧠</span> Explain The System
         </button>
         <button type="button" class="preset-btn" data-preset="free">
           <span class="preset-icon">✏️</span> Free Form
@@ -252,7 +266,7 @@
       </div>
     </div>
 
-    <button type="submit" id="submit-btn">Start the debate →</button>
+    <button type="submit" id="submit-btn">Run the task -&gt;</button>
     <div id="status"></div>
   </form>
 </div>
@@ -262,12 +276,12 @@
     <div class="output-topic" id="output-topic"></div>
     <div class="output-body" id="output-body"></div>
   </div>
-  <div class="share-hint">Run it again with a different mode to get a fresh perspective.</div>
+  <div class="share-hint">Run it again with a different mode to pressure-test the task from another angle.</div>
 </div>
 
 <footer>
   <a href="https://vers3dynamics.com" target="_blank" rel="noopener">vers3dynamics.com</a>
-  &nbsp;·&nbsp; Powered by R.A.I.N. &mdash; runs locally, thinks collectively.
+  &nbsp;·&nbsp; Powered by R.A.I.N. - runs locally, understands code, stays auditable.
 </footer>
 
 <script>
@@ -295,7 +309,7 @@
 
     submitBtn.disabled = true;
     outputEl.style.display = 'none';
-    statusEl.innerHTML = '<span class="spinner"></span> James and the agents are discussing…';
+    statusEl.innerHTML = '<span class="spinner"></span> James and the agents are working through the task...';
 
     try {
       const res = await fetch('/debate', {

@@ -39,8 +39,11 @@ use dialoguer::Password;
 use serde::{Deserialize, Serialize};
 use std::io::{IsTerminal, Write};
 use std::path::PathBuf;
+use std::sync::Arc;
 use tracing::{info, warn};
 use tracing_subscriber::{fmt, EnvFilter};
+
+use crate::tools::Tool;
 
 fn parse_temperature(s: &str) -> std::result::Result<f64, String> {
     let t: f64 = s.parse().map_err(|e| format!("{e}"))?;
@@ -538,6 +541,10 @@ Examples:
         shell: CompletionShell,
     },
 
+    /// Internal JSON stdin/stdout bridge for the LSP tool.
+    #[command(name = "lsp-query", hide = true)]
+    LspQuery,
+
     /// Manage WASM plugins
     #[cfg(feature = "plugins-wasm")]
     Plugin {
@@ -804,6 +811,10 @@ async fn main() -> Result<()> {
         let mut stdout = std::io::stdout().lock();
         write_shell_completion(*shell, &mut stdout)?;
         return Ok(());
+    }
+
+    if let Commands::LspQuery = &cli.command {
+        return run_lsp_query_command().await;
     }
 
     // Initialize logging - respects RUST_LOG env var, defaults to INFO
@@ -1117,6 +1128,82 @@ fn print_estop_status(state: &security::EstopState) {
     if let Some(updated_at) = &state.updated_at {
         println!("  updated_at:     {updated_at}");
     }
+}
+
+async fn run_lsp_query_command() -> Result<()> {
+    let stdin = std::io::stdin();
+    let args: serde_json::Value = serde_json::from_reader(stdin.lock())
+        .context("Failed to parse lsp-query JSON from stdin")?;
+    let workspace_dir = std::env::current_dir().context("Failed to resolve current directory")?;
+    let output = execute_lsp_query(args, workspace_dir).await?;
+    println!("{output}");
+    Ok(())
+}
+
+async fn execute_lsp_query(args: serde_json::Value, workspace_dir: PathBuf) -> Result<String> {
+    execute_lsp_query_with_server_configs(args, workspace_dir, Vec::new()).await
+}
+
+async fn execute_lsp_query_with_server_configs(
+    args: serde_json::Value,
+    workspace_dir: PathBuf,
+    server_configs: Vec<crate::tools::lsp_client::LspServerConfig>,
+) -> Result<String> {
+    let workspace_dir = workspace_dir.canonicalize().unwrap_or(workspace_dir);
+    let args = normalize_lsp_query_args(args, &workspace_dir);
+    let security = Arc::new(security::SecurityPolicy {
+        workspace_dir: workspace_dir.clone(),
+        ..security::SecurityPolicy::default()
+    });
+    let tool = if server_configs.is_empty() {
+        tools::LspTool::new(security, workspace_dir.clone())
+    } else {
+        tools::LspTool::with_server_configs(security, workspace_dir.clone(), server_configs)
+    };
+
+    let execute_result = tool.execute(args).await;
+    let shutdown_result = tool.shutdown().await;
+    let result = execute_result?;
+    shutdown_result?;
+
+    if result.success {
+        Ok(result.output)
+    } else {
+        bail!(
+            "{}",
+            result
+                .error
+                .unwrap_or_else(|| "LSP query failed without an error message".to_string())
+        );
+    }
+}
+
+fn normalize_lsp_query_args(
+    mut args: serde_json::Value,
+    workspace_dir: &std::path::Path,
+) -> serde_json::Value {
+    let Some(file_path) = args.get("file_path").and_then(serde_json::Value::as_str) else {
+        return args;
+    };
+
+    let candidate = PathBuf::from(file_path)
+        .canonicalize()
+        .unwrap_or_else(|_| PathBuf::from(file_path));
+    if !candidate.is_absolute() {
+        return args;
+    }
+
+    let Ok(relative) = candidate.strip_prefix(workspace_dir) else {
+        return args;
+    };
+
+    if let Some(object) = args.as_object_mut() {
+        object.insert(
+            "file_path".to_string(),
+            serde_json::Value::String(relative.to_string_lossy().replace('\\', "/")),
+        );
+    }
+    args
 }
 
 /// Write shell completion output to the provided writer.
@@ -1941,6 +2028,114 @@ pub(crate) async fn handle_auth_command(auth_command: AuthCommands, config: &Con
 mod tests {
     use super::*;
     use clap::{CommandFactory, Parser};
+    use std::collections::BTreeMap;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::process::Command;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use crate::tools::lsp_client::LspServerConfig;
+
+    fn temp_dir(label: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time should be after epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("rain-main-{label}-{nanos}"))
+    }
+
+    fn python_command() -> Option<String> {
+        ["python", "python3"].into_iter().find_map(|candidate| {
+            Command::new(candidate)
+                .arg("--version")
+                .output()
+                .ok()
+                .filter(|output| output.status.success())
+                .map(|_| candidate.to_string())
+        })
+    }
+
+    fn write_mock_server_script(root: &std::path::Path) -> PathBuf {
+        let script_path = root.join("mock_lsp_server.py");
+        fs::write(
+            &script_path,
+            r#"import json
+import sys
+
+
+def read_message():
+    headers = {}
+    while True:
+        line = sys.stdin.buffer.readline()
+        if not line:
+            return None
+        if line == b"\r\n":
+            break
+        key, value = line.decode("utf-8").split(":", 1)
+        headers[key.lower()] = value.strip()
+    length = int(headers["content-length"])
+    body = sys.stdin.buffer.read(length)
+    return json.loads(body)
+
+
+def write_message(payload):
+    raw = json.dumps(payload).encode("utf-8")
+    sys.stdout.buffer.write(f"Content-Length: {len(raw)}\r\n\r\n".encode("utf-8"))
+    sys.stdout.buffer.write(raw)
+    sys.stdout.buffer.flush()
+
+
+while True:
+    message = read_message()
+    if message is None:
+        break
+
+    method = message.get("method")
+    if method == "initialize":
+        write_message({
+            "jsonrpc": "2.0",
+            "id": message["id"],
+            "result": {
+                "capabilities": {
+                    "definitionProvider": True,
+                    "referencesProvider": True,
+                    "documentSymbolProvider": True,
+                    "textDocumentSync": 1,
+                }
+            },
+        })
+    elif method == "initialized":
+        continue
+    elif method == "textDocument/didOpen":
+        continue
+    elif method == "textDocument/documentSymbol":
+        uri = message["params"]["textDocument"]["uri"]
+        write_message({
+            "jsonrpc": "2.0",
+            "id": message["id"],
+            "result": [
+                {
+                    "name": "main",
+                    "kind": 12,
+                    "location": {
+                        "uri": uri,
+                        "range": {
+                            "start": {"line": 0, "character": 0},
+                            "end": {"line": 0, "character": 11},
+                        }
+                    }
+                }
+            ],
+        })
+    elif method == "shutdown":
+        write_message({"jsonrpc": "2.0", "id": message["id"], "result": None})
+    elif method == "exit":
+        break
+"#,
+        )
+        .expect("mock server should be written");
+        script_path
+    }
 
     #[test]
     fn cli_definition_has_no_flag_conflicts() {
@@ -2149,5 +2344,54 @@ mod tests {
         let final_temperature = user_temperature.unwrap_or(config.default_temperature);
 
         assert!((final_temperature - 0.7).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn hidden_lsp_query_command_parses() {
+        let cli = Cli::try_parse_from(["R.A.I.N.", "lsp-query"]).expect("lsp-query should parse");
+
+        match cli.command {
+            Commands::LspQuery => {}
+            other => panic!("expected lsp-query command, got {other:?}"),
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn execute_lsp_query_with_server_configs_returns_json_output() {
+        let Some(python) = python_command() else {
+            return;
+        };
+
+        let root = temp_dir("lsp-query");
+        fs::create_dir_all(root.join("src")).expect("workspace root should exist");
+        let script_path = write_mock_server_script(&root);
+        let source_path = root.join("src").join("main.rs");
+        fs::write(&source_path, "fn main() {}\n").expect("source file should exist");
+
+        let output = execute_lsp_query_with_server_configs(
+            serde_json::json!({
+                "action": "document_symbols",
+                "file_path": source_path.display().to_string(),
+            }),
+            root.clone(),
+            vec![LspServerConfig {
+                name: "rust-analyzer".to_string(),
+                command: python,
+                args: vec![script_path.display().to_string()],
+                env: BTreeMap::new(),
+                workspace_root: root.clone(),
+                initialization_options: None,
+                extension_to_language: BTreeMap::from([(".rs".to_string(), "rust".to_string())]),
+            }],
+        )
+        .await
+        .expect("lsp query should succeed");
+
+        let payload: serde_json::Value =
+            serde_json::from_str(&output).expect("output should be json");
+        assert_eq!(payload["action"], "document_symbols");
+        assert_eq!(payload["results"][0]["name"], "main");
+
+        fs::remove_dir_all(root).expect("temp workspace should be removed");
     }
 }

@@ -17,7 +17,10 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
+
+from james_library.utilities import context_manager, prefetch
+from james_library.utilities.cost_monitor import BudgetExceededError, CostMonitor
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +28,9 @@ try:
     import tomllib
 except ModuleNotFoundError:  # pragma: no cover - Python <3.11 fallback
     tomllib = None
+
+
+BudgetPromptHandler = Callable[[BudgetExceededError, float], float | None]
 
 
 # ---------------------------------------------------------------------------
@@ -226,10 +232,13 @@ class SwarmConfig:
 
     rounds: int = 6
     max_tokens_per_turn: int = 512
+    max_context_tokens: int = 6_000
+    max_task_budget: float | None = None
     temperature: float = 0.4
     model_name: str = ""
     base_url: str = ""
     api_key: str = "not-needed"
+    session_id: str = ""
     timeout: float = 120.0
 
 
@@ -245,6 +254,16 @@ class SwarmTranscript:
     started_at: str = ""
     finished_at: str = ""
     total_duration_s: float = 0.0
+
+
+@dataclass
+class SwarmRuntimeState:
+    """Mutable runtime state shared across all LLM calls in a task."""
+
+    session_id: str
+    cost_monitor: CostMonitor
+    max_task_budget: float
+    budget_prompt: BudgetPromptHandler | None = None
 
 
 @dataclass
@@ -306,10 +325,174 @@ def load_agent_manifest(manifest_path: str | Path) -> AgentManifest:
     )
 
 
+def _workspace_root() -> Path:
+    return Path(os.environ.get("JAMES_LIBRARY_PATH", Path.cwd())).resolve()
+
+
+def _resolve_max_task_budget(config_budget: float | None) -> float:
+    if config_budget is not None:
+        return max(0.0, float(config_budget))
+
+    for env_name in ("JAMES_MAX_TASK_BUDGET", "RAIN_MAX_TASK_BUDGET"):
+        raw = os.environ.get(env_name)
+        if raw is None:
+            continue
+        try:
+            return max(0.0, float(raw))
+        except ValueError:
+            logger.warning("Ignoring invalid %s value: %s", env_name, raw)
+
+    return 1.00
+
+
+def _build_runtime_state(
+    *,
+    session_id: str,
+    config: SwarmConfig,
+    workspace_root: Path,
+    budget_prompt: BudgetPromptHandler | None = None,
+) -> SwarmRuntimeState:
+    return SwarmRuntimeState(
+        session_id=session_id,
+        cost_monitor=CostMonitor(session_id=session_id, workspace_root=workspace_root),
+        max_task_budget=_resolve_max_task_budget(config.max_task_budget),
+        budget_prompt=budget_prompt,
+    )
+
+
+def _default_budget_prompt(error: BudgetExceededError, current_limit: float) -> float | None:
+    while True:
+        answer = input(
+            f"⚠️ BUDGET LIMIT REACHED (${current_limit:.2f}). "
+            f"Total spent: ${error.total_spent:.2f}. "
+            "Increase limit or terminate task? (y/n/limit)"
+        ).strip().lower()
+
+        if answer in {"", "n", "no"}:
+            return None
+        if answer in {"y", "yes"}:
+            return round(max(current_limit + 1.0, error.total_spent + 1.0), 2)
+        if answer == "limit":
+            raw_limit = input("Enter new budget limit in USD: ").strip()
+            try:
+                new_limit = float(raw_limit)
+            except ValueError:
+                continue
+            if new_limit > error.total_spent:
+                return new_limit
+
+
+def _handle_budget_exceeded(runtime_state: SwarmRuntimeState, error: BudgetExceededError) -> None:
+    prompt = runtime_state.budget_prompt or _default_budget_prompt
+    new_limit = prompt(error, runtime_state.max_task_budget)
+    if new_limit is None:
+        raise error
+    runtime_state.max_task_budget = float(new_limit)
+    logger.warning(
+        "[COST] budget increased to $%.2f after overrun at $%.4f",
+        runtime_state.max_task_budget,
+        error.total_spent,
+    )
+
+
+def _response_token_usage(response: Any) -> tuple[int, int]:
+    usage = getattr(response, "usage", None)
+    if usage is None and isinstance(response, dict):
+        usage = response.get("usage")
+
+    if usage is None:
+        return 0, 0
+
+    if isinstance(usage, dict):
+        prompt_tokens = usage.get("prompt_tokens", 0)
+        completion_tokens = usage.get("completion_tokens", 0)
+    else:
+        prompt_tokens = getattr(usage, "prompt_tokens", 0)
+        completion_tokens = getattr(usage, "completion_tokens", 0)
+
+    return max(0, int(prompt_tokens or 0)), max(0, int(completion_tokens or 0))
+
+
+def _build_specialist_user_message(
+    *,
+    query: str,
+    manifest: AgentManifest,
+    room_context: str,
+    prefetch_context: str = "",
+) -> str:
+    """Assemble a first-turn worker prompt with optional IDE prefetch context."""
+
+    memory_hint = ", ".join(manifest.memory.categories) if manifest.memory.categories else "default"
+    tool_hint = ", ".join(manifest.tools.allowed) if manifest.tools.allowed else "none"
+    sections = [
+        room_context,
+        f"User query: {query}",
+        f"Your role: {manifest.identity.role}",
+        f"Allowed tools: {tool_hint}",
+        f"Memory routes: {memory_hint}",
+    ]
+    if prefetch_context:
+        sections.insert(1, prefetch_context)
+    sections.append("Provide findings, assumptions, and one recommended next step.")
+    return "\n\n".join(sections)
+
+
+def _compact_messages_for_llm(
+    messages: list[dict[str, str]],
+    *,
+    max_context_tokens: int,
+    model: str = "cl100k_base",
+) -> tuple[list[dict[str, str]], dict[str, Any]]:
+    """Compact transient prompt buffers before each LLM call."""
+
+    result = context_manager.compact_history(messages, max_tokens=max_context_tokens, model=model)
+    log_message = (
+        f"[CONTEXT] before={result.original_tokens} "
+        f"after={result.compacted_tokens} "
+        f"saved={result.tokens_saved} "
+        f"summaries={result.summary_count} "
+        f"pruned={result.pruned_count}"
+    )
+    logger.debug(log_message)
+    return result.compacted_messages, {
+        "original_tokens": result.original_tokens,
+        "compacted_tokens": result.compacted_tokens,
+        "tokens_saved": result.tokens_saved,
+        "summary_count": result.summary_count,
+        "pruned_count": result.pruned_count,
+        "log_message": log_message,
+    }
+
+
+def _chunk_text_as_messages(
+    text: str,
+    *,
+    prefix: str,
+    chunk_chars: int = 2_200,
+) -> list[dict[str, str]]:
+    """Split large prompt sections into independent user messages for compaction."""
+
+    payload = text.strip()
+    if not payload:
+        return []
+    if len(payload) <= chunk_chars:
+        return [{"role": "user", "content": f"{prefix}\n{payload}"}]
+
+    chunks = [
+        payload[index : index + chunk_chars]
+        for index in range(0, len(payload), chunk_chars)
+    ]
+    return [
+        {"role": "user", "content": f"{prefix} (chunk {index}/{len(chunks)})\n{chunk}"}
+        for index, chunk in enumerate(chunks, start=1)
+    ]
+
+
 async def run_blackboard_lab(
     query: str,
     manifests: list[AgentManifest],
     config: SwarmConfig | None = None,
+    runtime_state: SwarmRuntimeState | None = None,
 ) -> dict[str, Any]:
     """Prototype blackboard orchestrator for multi-specialist collaboration.
 
@@ -333,6 +516,16 @@ async def run_blackboard_lab(
     except ImportError:
         client = _openai.OpenAI(base_url=base_url, api_key=api_key)
 
+    workspace_root = _workspace_root()
+    session_id = runtime_state.session_id if runtime_state is not None else (
+        cfg.session_id or f"blackboard_{uuid.uuid4().hex[:12]}"
+    )
+    runtime_state = runtime_state or _build_runtime_state(
+        session_id=session_id,
+        config=cfg,
+        workspace_root=workspace_root,
+    )
+    prefetch_context = prefetch.build_prefetch_context(query, workspace_root)
     room_context = (
         "You are operating in a shared lab blackboard. "
         "Read peer notes and contribute only your specialist perspective."
@@ -340,23 +533,23 @@ async def run_blackboard_lab(
     per_agent_notes: list[dict[str, str]] = []
 
     for manifest in manifests:
-        memory_hint = ", ".join(manifest.memory.categories) if manifest.memory.categories else "default"
-        tool_hint = ", ".join(manifest.tools.allowed) if manifest.tools.allowed else "none"
-        user_message = (
-            f"{room_context}\n\n"
-            f"User query: {query}\n"
-            f"Your role: {manifest.identity.role}\n"
-            f"Allowed tools: {tool_hint}\n"
-            f"Memory routes: {memory_hint}\n\n"
-            f"Provide findings, assumptions, and one recommended next step."
+        user_message = _build_specialist_user_message(
+            query=query,
+            manifest=manifest,
+            room_context=room_context,
+            prefetch_context=prefetch_context,
         )
         response = await _call_llm_async(
             client=client,
             model=model,
-            system_prompt=manifest.identity.system_prompt,
-            user_message=user_message,
+            messages=[
+                {"role": "system", "content": manifest.identity.system_prompt},
+                {"role": "user", "content": user_message},
+            ],
             temperature=cfg.temperature,
             max_tokens=cfg.max_tokens_per_turn,
+            max_context_tokens=cfg.max_context_tokens,
+            runtime_state=runtime_state,
         )
         per_agent_notes.append(
             {
@@ -367,18 +560,34 @@ async def run_blackboard_lab(
             }
         )
 
-    synthesis_prompt = (
-        "You are the lab chair. Synthesize specialist notes into one integrated answer.\n\n"
-        f"User query: {query}\n\n"
-        f"Specialist notes:\n{json.dumps(per_agent_notes, ensure_ascii=False, indent=2)}"
-    )
+    synthesis_messages = [
+        {
+            "role": "system",
+            "content": "Synthesize into a concise multi-perspective answer with clear action items.",
+        },
+        {
+            "role": "user",
+            "content": (
+                "You are the lab chair. Synthesize specialist notes into one integrated answer.\n\n"
+                f"User query: {query}"
+            ),
+        },
+        *(
+            _chunk_text_as_messages(
+                json.dumps(per_agent_notes, ensure_ascii=False, indent=2),
+                prefix="[Specialist notes]",
+            )
+        ),
+        {"role": "user", "content": "Synthesize the specialist notes into one integrated answer."},
+    ]
     synthesis = await _call_llm_async(
         client=client,
         model=model,
-        system_prompt="Synthesize into a concise multi-perspective answer with clear action items.",
-        user_message=synthesis_prompt,
+        messages=synthesis_messages,
         temperature=0.2,
         max_tokens=768,
+        max_context_tokens=cfg.max_context_tokens,
+        runtime_state=runtime_state,
     )
 
     return {"query": query, "specialist_notes": per_agent_notes, "synthesized_response": synthesis}
@@ -387,33 +596,62 @@ async def run_blackboard_lab(
 async def _call_llm_async(
     client: Any,
     model: str,
-    system_prompt: str,
-    user_message: str,
+    messages: list[dict[str, str]],
     temperature: float,
     max_tokens: int,
+    max_context_tokens: int,
+    runtime_state: SwarmRuntimeState | None = None,
 ) -> str:
     """Non-blocking LLM call via asyncio executor (openai client is sync)."""
+    if runtime_state is not None:
+        try:
+            runtime_state.cost_monitor.check_budget(runtime_state.max_task_budget)
+        except BudgetExceededError as error:
+            _handle_budget_exceeded(runtime_state, error)
+
+    compacted_messages, _meta = _compact_messages_for_llm(
+        messages,
+        max_context_tokens=max_context_tokens,
+        model=model,
+    )
     loop = asyncio.get_running_loop()
 
-    def _sync_call() -> str:
+    def _sync_call() -> tuple[str, int, int]:
         response = client.chat.completions.create(
             model=model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message},
-            ],
+            messages=compacted_messages,
             temperature=temperature,
             max_tokens=max_tokens,
         )
-        return response.choices[0].message.content.strip()
+        prompt_tokens, completion_tokens = _response_token_usage(response)
+        return response.choices[0].message.content.strip(), prompt_tokens, completion_tokens
 
-    return await loop.run_in_executor(None, _sync_call)
+    content, prompt_tokens, completion_tokens = await loop.run_in_executor(None, _sync_call)
+
+    if runtime_state is not None:
+        delta = runtime_state.cost_monitor.update_cost(
+            model_name=model,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+        )
+        logger.info(
+            "[COST] session_total=$%.4f (+ $%.4f)",
+            runtime_state.cost_monitor.session_cost,
+            delta,
+        )
+        try:
+            runtime_state.cost_monitor.check_budget(runtime_state.max_task_budget)
+        except BudgetExceededError as error:
+            _handle_budget_exceeded(runtime_state, error)
+
+    return content
 
 
 async def run_swarm(
     document: str,
     topic: str,
     config: SwarmConfig | None = None,
+    runtime_state: SwarmRuntimeState | None = None,
 ) -> SwarmTranscript:
     """Run an isolated adversarial peer-review swarm.
 
@@ -448,7 +686,14 @@ async def run_swarm(
     # Generate adversarial personas.
     personas = generate_reviewer_personas(topic, count=4)
 
-    session_id = f"swarm_{uuid.uuid4().hex[:12]}"
+    session_id = runtime_state.session_id if runtime_state is not None else (
+        cfg.session_id or f"swarm_{uuid.uuid4().hex[:12]}"
+    )
+    runtime_state = runtime_state or _build_runtime_state(
+        session_id=session_id,
+        config=cfg,
+        workspace_root=_workspace_root(),
+    )
     doc_hash = f"{len(document)}_{hash(document) & 0xFFFFFFFF:08x}"
     t_start = time.monotonic()
 
@@ -473,18 +718,12 @@ async def run_swarm(
         f"{doc_excerpt}"
     )
 
-    debate_log: list[str] = []
+    debate_messages: list[dict[str, str]] = [{"role": "user", "content": doc_context}]
 
     for round_num in range(1, cfg.rounds + 1):
         for persona in personas:
-            # Build the per-turn user message with debate history.
-            recent_debate = "\n".join(debate_log[-16:]) if debate_log else "[No prior discussion]"
-
             user_msg = (
-                f"{doc_context}\n\n"
-                f"# DEBATE TRANSCRIPT (Round {round_num}/{cfg.rounds})\n"
-                f"{recent_debate}\n\n"
-                f"# YOUR TURN\n"
+                f"# YOUR TURN (Round {round_num}/{cfg.rounds})\n"
                 f"Provide your critique for this round. "
                 f"Address other reviewers' points where relevant."
             )
@@ -493,11 +732,18 @@ async def run_swarm(
                 response_text = await _call_llm_async(
                     client=client,
                     model=model,
-                    system_prompt=persona["system_prompt"],
-                    user_message=user_msg,
+                    messages=[
+                        {"role": "system", "content": persona["system_prompt"]},
+                        *debate_messages,
+                        {"role": "user", "content": user_msg},
+                    ],
                     temperature=cfg.temperature,
                     max_tokens=cfg.max_tokens_per_turn,
+                    max_context_tokens=cfg.max_context_tokens,
+                    runtime_state=runtime_state,
                 )
+            except BudgetExceededError:
+                raise
             except Exception as e:
                 response_text = f"[ERROR: {type(e).__name__}: {e}]"
                 logger.warning("Swarm LLM call failed for %s: %s", persona["name"], e)
@@ -510,7 +756,12 @@ async def run_swarm(
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
             transcript.turns.append(turn_record)
-            debate_log.append(f"[{persona['name']} ({persona['role']})] {response_text}")
+            debate_messages.append(
+                {
+                    "role": "user",
+                    "content": f"[{persona['name']} ({persona['role']})] {response_text}",
+                }
+            )
 
     t_end = time.monotonic()
     transcript.finished_at = datetime.now(timezone.utc).isoformat()
@@ -564,12 +815,18 @@ For each reviewer, estimate how confident/substantiated their critiques were (1-
 async def synthesize_report(
     transcript: SwarmTranscript,
     config: SwarmConfig | None = None,
+    runtime_state: SwarmRuntimeState | None = None,
 ) -> str:
     """Compress a swarm transcript into a structured Peer_Review_Report.
 
     Returns the report as a markdown string.
     """
     cfg = config or SwarmConfig()
+    runtime_state = runtime_state or _build_runtime_state(
+        session_id=transcript.session_id,
+        config=cfg,
+        workspace_root=_workspace_root(),
+    )
     model = cfg.model_name or os.environ.get("LM_STUDIO_MODEL", "qwen2.5-coder-7b-instruct")
     base_url = cfg.base_url or os.environ.get("LM_STUDIO_BASE_URL", "http://localhost:1234/v1")
     api_key = cfg.api_key or os.environ.get("LM_STUDIO_API_KEY", "not-needed")
@@ -600,33 +857,33 @@ async def synthesize_report(
     if len(debate_text) > max_debate_chars:
         debate_text = debate_text[:max_debate_chars] + "\n\n[... DEBATE TRUNCATED ...]"
 
-    user_msg = (
-        f"# PEER REVIEW SWARM TRANSCRIPT\n"
-        f"Topic: {transcript.topic}\n"
-        f"Session: {transcript.session_id}\n"
-        f"Reviewers: {len(transcript.personas)}\n"
-        f"Rounds: {transcript.turns[-1]['round'] if transcript.turns else 0}\n"
-        f"Duration: {transcript.total_duration_s}s\n\n"
-        f"{debate_text}\n\n"
-        f"# TASK\n"
-        f"Synthesize the above debate into the required report format."
+    report = await _call_llm_async(
+        client=client,
+        model=model,
+        messages=[
+            {"role": "system", "content": _SYNTHESIZER_SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": (
+                    f"# PEER REVIEW SWARM TRANSCRIPT\n"
+                    f"Topic: {transcript.topic}\n"
+                    f"Session: {transcript.session_id}\n"
+                    f"Reviewers: {len(transcript.personas)}\n"
+                    f"Rounds: {transcript.turns[-1]['round'] if transcript.turns else 0}\n"
+                    f"Duration: {transcript.total_duration_s}s"
+                ),
+            },
+            *(_chunk_text_as_messages(debate_text, prefix="[Debate transcript]")),
+            {
+                "role": "user",
+                "content": "# TASK\nSynthesize the above debate into the required report format.",
+            },
+        ],
+        temperature=0.2,
+        max_tokens=2048,
+        max_context_tokens=cfg.max_context_tokens,
+        runtime_state=runtime_state,
     )
-
-    loop = asyncio.get_running_loop()
-
-    def _sync_call() -> str:
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": _SYNTHESIZER_SYSTEM_PROMPT},
-                {"role": "user", "content": user_msg},
-            ],
-            temperature=0.2,
-            max_tokens=2048,
-        )
-        return response.choices[0].message.content.strip()
-
-    report = await loop.run_in_executor(None, _sync_call)
 
     # Prepend metadata header.
     header = (
@@ -678,12 +935,27 @@ async def invoke_peer_review(
         model_name=model_name,
         base_url=base_url,
     )
+    session_id = cfg.session_id or f"swarm_{uuid.uuid4().hex[:12]}"
+    runtime_state = _build_runtime_state(
+        session_id=session_id,
+        config=cfg,
+        workspace_root=_workspace_root(),
+    )
 
     # Phase 1: Run the adversarial debate.
-    transcript = await run_swarm(document=document, topic=topic, config=cfg)
+    transcript = await run_swarm(
+        document=document,
+        topic=topic,
+        config=cfg,
+        runtime_state=runtime_state,
+    )
 
     # Phase 2: Synthesize the report.
-    report = await synthesize_report(transcript, config=cfg)
+    report = await synthesize_report(
+        transcript,
+        config=cfg,
+        runtime_state=runtime_state,
+    )
 
     # Phase 3: Optionally persist to disk.
     output_file = None

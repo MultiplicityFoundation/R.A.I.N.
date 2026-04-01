@@ -3487,19 +3487,20 @@ mod tests {
     #[test]
     fn evict_stale_threads_removes_expired_entries() {
         let mut threads: HashMap<String, (String, String, Instant)> = HashMap::new();
-        let old = Instant::now()
-            .checked_sub(Duration::from_secs(SLACK_POLL_THREAD_EXPIRE_SECS + 1))
-            .unwrap();
+        let base = Instant::now();
+        let eviction_now = base
+            .checked_add(Duration::from_secs(SLACK_POLL_THREAD_EXPIRE_SECS + 1))
+            .expect("future instant should be representable for test horizon");
         threads.insert(
             "old.thread".to_string(),
-            ("C1".to_string(), "old.reply".to_string(), old),
+            ("C1".to_string(), "old.reply".to_string(), base),
         );
         threads.insert(
             "new.thread".to_string(),
-            ("C1".to_string(), "new.reply".to_string(), Instant::now()),
+            ("C1".to_string(), "new.reply".to_string(), eviction_now),
         );
 
-        SlackChannel::evict_stale_threads(&mut threads, Instant::now());
+        SlackChannel::evict_stale_threads(&mut threads, eviction_now);
         assert_eq!(threads.len(), 1);
         assert!(threads.contains_key("new.thread"));
     }

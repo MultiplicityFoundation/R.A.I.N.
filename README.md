@@ -1,6 +1,6 @@
-# 🐙 James and the R.A.I.N. Lab
+# James and the R.A.I.N. Lab
 
-**Think with AI teammates who challenge your ideas, stress-test your plans, and remember everything.**
+**The local-first autonomous coding agent runtime for Rust, Python, and hardware-adjacent teams.**
 
 <p align="center">
   <img src="assets/rain_lab.png" alt="R.A.I.N. Lab logo" width="800" />
@@ -16,15 +16,20 @@
 
 ---
 
-## What It Feels Like
+## What This Is
 
-Imagine a research meeting where multiple AI advisors each bring a different perspective. One plays devil's advocate. Another looks for gaps in your logic. A third checks if your claims hold up. They debate. They document. They remember.
+`james_library` is a local-first runtime for autonomous coding agents that need to operate inside real engineering environments, not toy prompt loops.
 
-That's the R.A.I.N. Lab.
+It is built for work that crosses:
+- Rust services and tooling
+- Python automation and orchestration
+- firmware, peripherals, and hardware control paths
 
-You bring the question. James and his team explore it from multiple angles, challenge weak spots, verify facts, and hand you back something you can actually use — a clear analysis, a decision framework, or a list of what still needs testing.
+Most coding agents look good in short demos and break under real conditions. They lose context in long loops, miss code relationships, use tools too loosely, and can silently burn money while running unattended.
 
-All on your own computer. Private. No cloud. No one is watching.
+R.A.I.N. Lab is the opposite bet. Give James a real engineering task and the system is designed to keep context, understand the codebase, stay within tool boundaries, and make the loop auditable.
+
+All on your own computer. Private by default.
 
 ---
 
@@ -32,13 +37,13 @@ All on your own computer. Private. No cloud. No one is watching.
 
 | Use case | What happens |
 |----------|--------------|
-| **Validate an idea** | Multiple agents pressure-test your assumption from different angles |
-| **Compare strategies** | Get structured debate on tradeoffs before you commit |
-| **Research a topic** | Agents explore competing viewpoints and preserve disagreements |
-| **Plan a decision** | Document reasoning trails you can review, share, or rerun later |
-| **Sound & physics exploration** | Deep technical workflows for resonance, frequency, and geometry |
+| **Understand a codebase faster** | LSP-aware agents can inspect symbols, definitions, references, and dependency context |
+| **Run longer autonomous tasks** | Context compaction keeps active history useful instead of letting the loop bloat |
+| **Keep spending under control** | Budget tracking and circuit breakers stop runaway autonomous sessions |
+| **Coordinate specialists** | Multi-agent orchestration lets role-specific workers attack the same task from different angles |
+| **Work locally with private code** | Tool execution, memory, and orchestration stay on your machine |
 
-**The result:** Fewer blind spots. More confidence. Outputs you can present to others.
+**The result:** better coding loops, fewer blind spots, and a system you can leave running without trusting it blindly.
 
 ---
 
@@ -50,7 +55,7 @@ No setup required for the demo:
 python rain_lab.py
 ```
 
-Press Enter. That's it. James will walk you through the rest.
+Press Enter. James will walk you through the rest.
 
 On Windows, you can also double-click `INSTALL_RAIN.cmd` to create shortcuts.
 On macOS/Linux, run `./install.sh` for a one-click setup.
@@ -67,13 +72,13 @@ python rain_lab.py
 
 Press Enter for instant demo mode. No model, no config — just see how it works.
 
-### Step 2: Run Your First Topic
+### Step 2: Run Your First Task
 
 ```bash
-python rain_lab.py --mode beginner --topic "your question here"
+python rain_lab.py --mode beginner --topic "inspect src/agent/history.rs and explain how long-loop memory is handled"
 ```
 
-This opens a guided flow where James helps you explore one idea thoroughly.
+This opens a guided flow where James helps you work through one task end to end.
 
 ### Step 3: Set Up Your AI (Optional)
 
@@ -91,21 +96,23 @@ The installer helps you connect to LM Studio or Ollama. Both run on your machine
 
 | Regular AI chat | R.A.I.N. Lab |
 |-----------------|--------------|
-| One answer, right or wrong | Multiple agents debate and verify |
-| Disagreement gets glossed over | Disagreement is preserved and compared |
-| Chat log that fades away | Session logs, share cards, and posters you can keep |
+| One answer, right or wrong | Agents can coordinate, challenge, and verify |
+| Weak code awareness | LSP-backed code intelligence and dependency context |
+| Context degrades over long tasks | Token-aware compaction keeps loops usable |
+| Costs are easy to ignore until too late | Real-time cost tracking and hard budget limits |
 | Everything in the cloud | Everything stays on your machine |
 
 ---
 
 ## Features
 
-- **Multi-agent research** — James plus specialized agents explore from different angles
-- **Structured debate** — Tradeoffs and disagreements get surfaced, not flattened
-- **Verification workflows** — Certain disputes get settled through checks, not just opinions
-- **Memory that persists** — Conversations are summarized and stored automatically
-- **Shareable outputs** — Session cards, posters, and HTML reports
-- **Local-first** — No cloud dependency. Your data stays yours.
+- **LSP-aware code intelligence** — definitions, references, document symbols, and dependency-prefetch context
+- **Context management for long loops** — summarize-then-prune history compaction with exact preservation for dangerous and hardware-critical outputs
+- **Hard cost controls** — per-session spend tracking, budget enforcement, and human-in-the-loop reset prompts
+- **Multi-agent orchestration** — James plus specialist workers for deeper task decomposition
+- **Persistent memory** — session state and resumable histories
+- **Local-first execution** — private code stays local, tools stay inspectable
+- **Developer-focused runtime** — Python + Rust stack with room to extend the agent surface
 - **Available in 6 languages** — 中文, 日本語, Русский, Français, Tiếng Việt, English
 
 ---
@@ -135,7 +142,7 @@ Python works without any of the optional parts. The more you add, the faster and
 <details>
 <summary>Click to expand</summary>
 
-R.A.I.N. Lab is built in Python + Rust. If you want to hack on it:
+R.A.I.N. Lab is built in Python + Rust. If you want to hack on the runtime:
 
 ```bash
 git clone https://github.com/topherchris420/james_library.git
@@ -152,6 +159,11 @@ cargo build --release --locked
 # Run
 uv run --python .venv/bin/python rain_lab.py --mode first-run
 ```
+
+Recommended mental model:
+- Python handles launcher flows and orchestration
+- Rust handles the fast runtime, tool surface, and lower-level infrastructure
+- The product wedge is a local-first autonomous coding agent for Rust, Python, and hardware-adjacent workflows
 
 **Testing:**
 ```bash
