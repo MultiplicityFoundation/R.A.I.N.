@@ -502,6 +502,16 @@ def score_grounding_confidence(response_text: str, provenance: list[ProvenanceIt
     return _confidence_score(response_text, provenance)
 
 
+def classify_runtime_failure(exc: BaseException) -> tuple[str, str]:
+    if isinstance(exc, asyncio.CancelledError):
+        return (
+            "canceled",
+            "R.A.I.N. runtime canceled: the operation was canceled. "
+            "Retry and verify LM Studio is running with a loaded model.",
+        )
+    return _classify_runtime_exception(exc)
+
+
 def _trace_log_path() -> Path:
     library = _library_path()
     default_path = library / "meeting_archives" / "runtime_events.jsonl"

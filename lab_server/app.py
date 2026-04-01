@@ -10,6 +10,7 @@ Deploy to maritime.sh via GitHub. Configure via environment variables:
 
 from __future__ import annotations
 
+import asyncio
 import sys
 from pathlib import Path
 
@@ -18,12 +19,13 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
 
 from lab_server.research_panel import run_research_panel
+from rain_lab_runtime import classify_runtime_failure
 
 _STATIC_DIR = Path(__file__).parent / "static"
 _MAX_TOPIC_CHARS = 500
@@ -75,4 +77,12 @@ def index() -> FileResponse:
 
 @app.post("/debate", response_model=DebateResponse)
 async def debate(req: DebateRequest) -> DebateResponse:
-    return DebateResponse(**(await run_research_panel(req.question)))
+    try:
+        payload = await run_research_panel(req.question)
+    except asyncio.CancelledError as exc:
+        _, detail = classify_runtime_failure(exc)
+        raise HTTPException(status_code=500, detail=detail) from exc
+    except Exception as exc:
+        _, detail = classify_runtime_failure(exc)
+        raise HTTPException(status_code=500, detail=detail) from exc
+    return DebateResponse(**payload)
