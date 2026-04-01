@@ -6,19 +6,9 @@ use std::path::PathBuf;
 use tokio::task::JoinHandle;
 use tokio::time::Duration;
 
-pub mod kairos;
-
-// Inside your main daemon startup function, add:
-use crate::daemon::kairos::KairosDaemon;
-
-pub async fn start_background_daemons(memory_db: SqliteMemory, graph_db: KnowledgeGraph) {
-    let kairos = KairosDaemon::new(memory_db, graph_db);
-    tokio::spawn(async move {
-        kairos.run_background_loop().await;
-    });
-}
-
 const STATUS_FLUSH_SECONDS: u64 = 5;
+
+pub mod kairos;
 
 /// Wait for shutdown signal (SIGINT or SIGTERM).
 /// SIGHUP is explicitly ignored so the daemon survives terminal/SSH disconnects.
@@ -73,6 +63,19 @@ pub async fn run(config: Config, host: String, port: u16) -> Result<()> {
     }
 
     let mut handles: Vec<JoinHandle<()>> = vec![spawn_state_writer(config.clone())];
+
+    {
+        let kairos_cfg = config.clone();
+        handles.push(spawn_component_supervisor(
+            "kairos",
+            initial_backoff,
+            max_backoff,
+            move || {
+                let cfg = kairos_cfg.clone();
+                async move { Box::pin(kairos::run(cfg)).await }
+            },
+        ));
+    }
 
     {
         let gateway_cfg = config.clone();
@@ -138,7 +141,7 @@ pub async fn run(config: Config, host: String, port: u16) -> Result<()> {
 
     println!("🧠 R.A.I.N. daemon started");
     println!("   Gateway:  http://{host}:{port}");
-    println!("   Components: gateway, channels, heartbeat, scheduler");
+    println!("   Components: gateway, channels, heartbeat, scheduler, kairos");
     if config.gateway.require_pairing {
         println!("   Pairing:    enabled (code appears in gateway output above)");
     }
@@ -837,4 +840,3 @@ mod tests {
         );
     }
 }
-
