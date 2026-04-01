@@ -6,7 +6,7 @@
   <img src="assets/rain_lab.png" alt="R.A.I.N. Lab logo" width="800" />
 </p>
 
-<p align="center">
+🌐<p align="center">
   <a href="README.zh-CN.md">简体中文</a> •
   <a href="README.ja.md">日本語</a> •
   <a href="README.ru.md">Русский</a> •
@@ -169,7 +169,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) and [CONTRIBUTING.md](CONTRIBUTING.md) fo
 
 ## License
 
-MIT. Built by [Vers3Dynamics](https://vers3dynamics.com/).
+MIT. Built by [Vers3Dynamics](https://vers3dynamics.com/), special thanks to ZeroClaw
 
 <a href="https://star-history.com/#topherchris420/james_library&type=date">
   <img src="https://api.star-history.com/image?repos=topherchris420/james_library&type=date&theme=dark" alt="Star History" width="200" />
