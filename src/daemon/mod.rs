@@ -6,6 +6,18 @@ use std::path::PathBuf;
 use tokio::task::JoinHandle;
 use tokio::time::Duration;
 
+pub mod kairos;
+
+// Inside your main daemon startup function, add:
+use crate::daemon::kairos::KairosDaemon;
+
+pub async fn start_background_daemons(memory_db: SqliteMemory, graph_db: KnowledgeGraph) {
+    let kairos = KairosDaemon::new(memory_db, graph_db);
+    tokio::spawn(async move {
+        kairos.run_background_loop().await;
+    });
+}
+
 const STATUS_FLUSH_SECONDS: u64 = 5;
 
 /// Wait for shutdown signal (SIGINT or SIGTERM).
@@ -825,3 +837,4 @@ mod tests {
         );
     }
 }
+
