@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import uuid
 from typing import Any
 
 from james_library.launcher.swarm_orchestrator import (
@@ -10,7 +12,14 @@ from james_library.launcher.swarm_orchestrator import (
     SwarmConfig,
     run_blackboard_lab,
 )
-from rain_lab_runtime import extract_provenance, score_grounding_confidence
+from rain_lab_runtime import (
+    RuntimeState,
+    extract_provenance,
+    load_runtime_config,
+    score_grounding_confidence,
+    trace_runtime_state,
+    validate_runtime_config,
+)
 
 _PANEL_TITLE = "Bell Labs-style panel"
 
@@ -73,23 +82,60 @@ def _normalize_panel_note(note: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-async def run_research_panel(question: str) -> dict[str, Any]:
-    envelope = await run_blackboard_lab(
+def _build_research_panel_trace_state(question: str) -> RuntimeState:
+    state = RuntimeState(
+        session_id=str(uuid.uuid4())[:8],
         query=question,
-        manifests=_research_panel_manifests(),
-        config=SwarmConfig(
-            rounds=1,
-            temperature=0.25,
-            max_tokens_per_turn=420,
-            max_context_tokens=6_000,
-        ),
+        mode="research_panel",
+        agent=_PANEL_TITLE,
     )
+    state.add_event("research_panel_started", {"question_chars": len(question)})
+    return state
+
+
+async def run_research_panel(question: str) -> dict[str, Any]:
+    config = load_runtime_config()
+    trace_state = _build_research_panel_trace_state(question)
+
+    try:
+        validate_runtime_config(config)
+    except Exception as exc:
+        trace_state.status = "error"
+        trace_state.add_event("research_panel_failed", {"error": str(exc), "kind": "config"})
+        trace_runtime_state(trace_state, config, error=str(exc))
+        raise
+
+    try:
+        envelope = await run_blackboard_lab(
+            query=question,
+            manifests=_research_panel_manifests(),
+            config=SwarmConfig(
+                rounds=1,
+                temperature=0.25,
+                max_tokens_per_turn=420,
+                max_context_tokens=6_000,
+                model_name=config.llm_model,
+                base_url=config.llm_base_url,
+                api_key=config.llm_api_key or "not-needed",
+                timeout=config.llm_timeout_s,
+            ),
+        )
+    except asyncio.CancelledError:
+        trace_state.status = "canceled"
+        trace_state.add_event("research_panel_failed", {"error": "operation canceled", "kind": "canceled"})
+        trace_runtime_state(trace_state, config, error="operation canceled")
+        raise
+    except Exception as exc:
+        trace_state.status = "error"
+        trace_state.add_event("research_panel_failed", {"error": str(exc), "kind": "runtime"})
+        trace_runtime_state(trace_state, config, error=str(exc))
+        raise
 
     panel = [_normalize_panel_note(note) for note in envelope["specialist_notes"]]
     synthesis = str(envelope["synthesized_response"]).strip()
     synthesis_evidence = extract_provenance(synthesis)
 
-    return {
+    result = {
         "question": question,
         "panel_title": _PANEL_TITLE,
         "panel": panel,
@@ -98,3 +144,30 @@ async def run_research_panel(question: str) -> dict[str, Any]:
         "grounded": bool(synthesis_evidence),
         "confidence": score_grounding_confidence(synthesis, synthesis_evidence),
     }
+
+    trace_state.status = "ok"
+    trace_state.add_event(
+        "research_panel_completed",
+        {
+            "panel_notes": len(panel),
+            "synthesis_chars": len(synthesis),
+            "grounded": result["grounded"],
+        },
+    )
+    trace_runtime_state(
+        trace_state,
+        config,
+        response={
+            "answer": synthesis,
+            "confidence": result["confidence"],
+            "provenance": result["synthesis_evidence_sources"],
+            "status": "ok",
+            "mode": "research_panel",
+            "agent": _PANEL_TITLE,
+            "grounded": result["grounded"],
+            "red_badge": not result["grounded"],
+        },
+        panel_count=len(panel),
+    )
+
+    return result

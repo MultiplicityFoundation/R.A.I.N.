@@ -251,6 +251,11 @@ def _validate_runtime_config(config: RuntimeConfig) -> None:
         )
 
 
+def validate_runtime_config(config: RuntimeConfig) -> None:
+    """Validate a runtime config using the same rules as the main runtime."""
+    _validate_runtime_config(config)
+
+
 def _public_runtime_config(config: RuntimeConfig) -> dict[str, Any]:
     return {
         "llm_timeout_s": config.llm_timeout_s,
@@ -336,6 +341,11 @@ def _load_runtime_config(config_path: Optional[str] = None) -> RuntimeConfig:
         llm_api_key=_pick_optional_str(os.environ.get("LM_STUDIO_API_KEY"), api_key_default),
         config_path=str(resolved_config_path) if resolved_config_path else None,
     )
+
+
+def load_runtime_config(config_path: Optional[str] = None) -> RuntimeConfig:
+    """Load runtime config using the shared runtime resolution rules."""
+    return _load_runtime_config(config_path=config_path)
 
 
 def _safe_agent_name(agent: Optional[str]) -> str:
@@ -598,6 +608,11 @@ def _trace_state(state: RuntimeState, config: RuntimeConfig, **extra: Any) -> No
 
     payload.update(_sanitize_trace_extras(extra, config.trace_include_payload))
     _append_trace_line(payload)
+
+
+def trace_runtime_state(state: RuntimeState, config: RuntimeConfig, **extra: Any) -> None:
+    """Record a runtime trace payload for integration callers."""
+    _trace_state(state, config, **extra)
 
 
 def _build_messages(

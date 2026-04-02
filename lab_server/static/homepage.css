@@ -465,6 +465,7 @@ button {
   margin: 0;
   line-height: 1.75;
   color: var(--text);
+  white-space: pre-wrap;
 }
 
 .panel-card__footer {
@@ -523,6 +524,10 @@ button {
 
 .synthesis-card h3 {
   font-size: 1.16rem;
+}
+
+#synthesis-text {
+  white-space: pre-wrap;
 }
 
 .evidence-list {

@@ -43,6 +43,12 @@ def _read_json_ld_payload(html: str) -> dict[str, object]:
     return json.loads(match.group(1))
 
 
+def _read_last_jsonl_payload(path: Path) -> dict[str, object]:
+    lines = path.read_text(encoding="utf-8").strip().splitlines()
+    assert lines
+    return json.loads(lines[-1])
+
+
 def test_debate_endpoint_returns_structured_research_panel(monkeypatch) -> None:
     async def fake_run_research_panel(question: str) -> dict[str, object]:
         return {
@@ -109,6 +115,24 @@ def test_debate_endpoint_translates_research_panel_failures(monkeypatch, error_m
     assert response.json() == {"detail": expected_detail}
 
 
+def test_debate_endpoint_surfaces_missing_runtime_config_detail(monkeypatch, tmp_path) -> None:
+    missing_config = tmp_path / "missing-runtime.toml"
+
+    async def fail_if_called(question: str) -> dict[str, object]:
+        raise AssertionError("run_blackboard_lab should not be reached when runtime config is missing")
+
+    monkeypatch.setenv("RAIN_RUNTIME_CONFIG", str(missing_config))
+    monkeypatch.setattr(research_panel, "run_blackboard_lab", fail_if_called)
+    client = TestClient(lab_app.app, raise_server_exceptions=False)
+
+    response = client.post("/debate", json={"question": "What causes fast radio bursts?"})
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "detail": f"R.A.I.N. runtime config error: file not found: {missing_config.resolve()}"
+    }
+
+
 def test_debate_endpoint_translates_cancelled_error(monkeypatch) -> None:
     async def fake_run_research_panel(question: str) -> dict[str, object]:
         raise asyncio.CancelledError()
@@ -163,6 +187,44 @@ def test_run_research_panel_normalizes_synthesis_provenance(monkeypatch) -> None
     assert result["synthesis_evidence_sources"] == ["Paper A.md", "Example Paper"]
     assert result["grounded"] is True
     assert result["confidence"] == 0.71
+
+
+def test_run_research_panel_writes_runtime_trace(monkeypatch, tmp_path) -> None:
+    trace_path = tmp_path / "meeting_archives" / "runtime_events.jsonl"
+
+    async def fake_run_blackboard_lab(**kwargs) -> dict[str, object]:
+        return {
+            "specialist_notes": [
+                {
+                    "agent_name": "Mechanism Hunter",
+                    "role": "Mechanistic modeler",
+                    "notes": "Magnetars remain strongest [from web: Example Paper].",
+                }
+            ],
+            "synthesized_response": "A grounded synthesis [from web: Example Paper].",
+        }
+
+    monkeypatch.setenv("JAMES_LIBRARY_PATH", str(tmp_path))
+    monkeypatch.setenv("RAIN_RUNTIME_TRACE_ENABLED", "1")
+    monkeypatch.setenv("RAIN_RUNTIME_TRACE_PATH", str(trace_path))
+    monkeypatch.setenv("LM_STUDIO_BASE_URL", "http://127.0.0.1:1234/v1")
+    monkeypatch.setenv("LM_STUDIO_MODEL", "qwen-test")
+    monkeypatch.delenv("LM_STUDIO_API_KEY", raising=False)
+    monkeypatch.setattr(research_panel, "run_blackboard_lab", fake_run_blackboard_lab)
+
+    result = asyncio.run(research_panel.run_research_panel("What causes fast radio bursts?"))
+
+    assert result["grounded"] is True
+    assert trace_path.exists()
+
+    payload = _read_last_jsonl_payload(trace_path)
+    assert payload["status"] == "ok"
+    assert payload["mode"] == "research_panel"
+    assert payload["agent"] == "Bell Labs-style panel"
+    assert payload["panel_count"] == 1
+    assert payload["response"]["mode"] == "research_panel"
+    assert payload["response"]["answer_chars"] > 0
+    assert payload["response"]["provenance_count"] == 1
 
 
 def test_homepage_shows_research_panel_positioning_and_no_longer_shows_coding_agent_copy() -> None:
@@ -238,3 +300,11 @@ def test_public_metadata_surfaces_reflect_research_panel_positioning() -> None:
         "Paper-backed claims and traceable support for review",
         "A broad research workflow for researchers, independent thinkers, and R&D teams",
     ]
+
+
+def test_homepage_css_preserves_multiline_panel_text() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    css = (repo_root / "lab_server" / "static" / "homepage.css").read_text(encoding="utf-8")
+
+    assert re.search(r"\.panel-card__content\s*\{[^}]*white-space:\s*pre-wrap;", css, re.S)
+    assert re.search(r"#synthesis-text\s*\{[^}]*white-space:\s*pre-wrap;", css, re.S)
