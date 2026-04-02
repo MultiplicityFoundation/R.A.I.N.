@@ -44,7 +44,19 @@ def test_readme_leads_with_research_panel_positioning(repo_root: Path) -> None:
     assistant_line = "James is the assistant inside R.A.I.N. Lab"
     hosted_url = "https://lab.vers3dynamics.com"
     local_runner = "python rain_lab.py"
-    first_section = "## What This Is"
+    first_section = "## What It Does"
+    expected_sections = (
+        "## What It Does",
+        "## Try It Now",
+        "## Who It Is For",
+        "## What You Can Do",
+        "## Why It Is Different",
+        "## Local and Private Workflow",
+        "## Features",
+        "## Requirements",
+        "## Documentation",
+        "## For Developers",
+    )
 
     for fragment in (heading, tagline, product_summary, expert_summary, assistant_line, hosted_url):
         assert fragment in text, f"README.md is missing required positioning marker: {fragment!r}"
@@ -64,6 +76,9 @@ def test_readme_leads_with_research_panel_positioning(repo_root: Path) -> None:
     assert expert_summary_index < first_section_index
     assert assistant_line_index < first_section_index
     assert hosted_url_index < local_runner_index
+
+    for section in expected_sections:
+        assert section in text, f"README.md is missing expected section: {section!r}"
 
     assert "# James and the R.A.I.N. Lab" not in text
     assert "The local-first autonomous coding agent runtime for Rust, Python, and hardware-adjacent teams." not in text

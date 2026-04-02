@@ -1,12 +1,12 @@
-# James and the R.A.I.N. Lab
+# R.A.I.N. Lab
 
-**The local-first autonomous coding agent runtime for Rust, Python, and hardware-adjacent teams.**
+**A private-by-default expert panel in a box for researchers, independent thinkers, and R&D teams.**
 
 <p align="center">
   <img src="assets/rain_lab.png" alt="R.A.I.N. Lab logo" width="800" />
 </p>
 
-<p align="center">🌐
+<p align="center">
   <a href="README.zh-CN.md">简体中文</a> •
   <a href="README.ja.md">日本語</a> •
   <a href="README.ru.md">Русский</a> •
@@ -14,122 +14,134 @@
   <a href="README.vi.md">Tiếng Việt</a>
 </p>
 
----
+Ask a raw research question. R.A.I.N. Lab assembles multiple expert perspectives, grounds strong claims in papers or explicit evidence, and returns the strongest explanations, disagreements, and next moves.
 
-## What This Is
+James is the assistant inside R.A.I.N. Lab.
 
-`james_library` is a local-first runtime for autonomous coding agents that need to operate inside real engineering environments, not toy prompt loops.
-
-It is built for work that crosses:
-- Rust services and tooling
-- Python automation and orchestration
-- firmware, peripherals, and hardware control paths
-
-Most coding agents look good in short demos and break under real conditions. They lose context in long loops, miss code relationships, use tools too loosely, and can silently burn money while running unattended.
-
-R.A.I.N. Lab is the opposite bet. Give James a real engineering task and the system is designed to keep context, understand the codebase, stay within tool boundaries, and make the loop auditable.
-
-All on your own computer. Private by default.
+Most tools help you find papers. R.A.I.N. Lab helps you think with a room full of experts.
 
 ---
 
-## What You Can Do
+## What It Does
 
-| Use case | What happens |
-|----------|--------------|
-| **Understand a codebase faster** | LSP-aware agents can inspect symbols, definitions, references, and dependency context |
-| **Run longer autonomous tasks** | Context compaction keeps active history useful instead of letting the loop bloat |
-| **Keep spending under control** | Budget tracking and circuit breakers stop runaway autonomous sessions |
-| **Coordinate specialists** | Multi-agent orchestration lets role-specific workers attack the same task from different angles |
-| **Work locally with private code** | Tool execution, memory, and orchestration stay on your machine |
+R.A.I.N. Lab turns one question into a structured research conversation.
 
-**The result:** better coding loops, fewer blind spots, and a system you can leave running without trusting it blindly.
+- It frames the problem from multiple expert angles.
+- It separates strong evidence from weak speculation.
+- It shows agreements, disagreements, and open questions instead of forcing false certainty.
+- It helps you decide what to read next, test next, or ask next.
+
+This is built for work that starts messy: early-stage research, technical due diligence, strategy exploration, independent investigation, and R&D planning.
 
 ---
 
 ## Try It Now
 
-No setup required for the demo:
+### Public Web Experience
 
-```
+Start with the hosted experience:
+
+- https://lab.vers3dynamics.com
+
+If you want the fastest way to feel the product, start there first.
+
+### Local and Private
+
+Run the local experience on your own machine:
+
+```bash
 python rain_lab.py
 ```
 
-Press Enter. James will walk you through the rest.
+Press Enter for demo mode, or continue into guided setup.
 
 On Windows, you can also double-click `INSTALL_RAIN.cmd` to create shortcuts.
 On macOS/Linux, run `./install.sh` for a one-click setup.
 
 ---
 
-## Getting Started
+## Who It Is For
 
-### Step 1: Try the Demo
+- Researchers working through ambiguous questions
+- Independent thinkers building evidence-backed views
+- R&D teams comparing explanations, risks, and next moves
+- Technical operators who want private workflows and inspectable reasoning
+
+---
+
+## What You Can Do
+
+| Use case | What R.A.I.N. Lab helps you do |
+|----------|--------------------------------|
+| **Pressure-test a research claim** | Compare competing explanations and inspect where the evidence is thin |
+| **Map a new topic fast** | Turn a vague question into viewpoints, sources, disagreements, and next steps |
+| **Prepare decisions** | Surface trade-offs, unresolved risks, and what would change the conclusion |
+| **Stay private** | Keep your local workflow and model setup on your own machine when needed |
+
+---
+
+## Why It Is Different
+
+Most research tools optimize for retrieval. R.A.I.N. Lab is designed for synthesis, challenge, and judgment.
+
+| Typical tool behavior | R.A.I.N. Lab behavior |
+|-----------------------|-----------------------|
+| Returns a list of papers or links | Returns competing interpretations and strongest next moves |
+| Treats the first plausible answer as good enough | Preserves disagreements and uncertainty where it matters |
+| Hides reasoning behind one-shot summaries | Makes evidence, gaps, and confidence easier to inspect |
+| Assumes cloud-first workflows | Supports local and private usage paths |
+
+---
+
+## Local and Private Workflow
+
+If you want the product to run from your machine with your own setup:
+
+1. Launch the app:
 
 ```bash
 python rain_lab.py
 ```
 
-Press Enter for instant demo mode. No model, no config — just see how it works.
-
-### Step 2: Run Your First Task
-
-```bash
-python rain_lab.py --mode beginner --topic "inspect src/agent/history.rs and explain how long-loop memory is handled"
-```
-
-This opens a guided flow where James helps you work through one task end to end.
-
-### Step 3: Set Up Your AI (Optional)
-
-Want to use your own AI model (runs locally, stays private)?
+2. For guided setup, run:
 
 ```bash
 python rain_lab.py --mode first-run
 ```
 
-The installer helps you connect to LM Studio or Ollama. Both run on your machine — no data leaves your computer.
+3. For a first structured prompt, try:
 
----
+```bash
+python rain_lab.py --mode beginner --topic "compare the strongest arguments for and against a local-first research workflow"
+```
 
-## Why It's Different
-
-| Regular AI chat | R.A.I.N. Lab |
-|-----------------|--------------|
-| One answer, right or wrong | Agents can coordinate, challenge, and verify |
-| Weak code awareness | LSP-backed code intelligence and dependency context |
-| Context degrades over long tasks | Token-aware compaction keeps loops usable |
-| Costs are easy to ignore until too late | Real-time cost tracking and hard budget limits |
-| Everything in the cloud | Everything stays on your machine |
+The guided flow can connect to LM Studio or Ollama so your model traffic stays local.
 
 ---
 
 ## Features
 
-- **LSP-aware code intelligence** — definitions, references, document symbols, and dependency-prefetch context
-- **Context management for long loops** — summarize-then-prune history compaction with exact preservation for dangerous and hardware-critical outputs
-- **Hard cost controls** — per-session spend tracking, budget enforcement, and human-in-the-loop reset prompts
-- **Multi-agent orchestration** — James plus specialist workers for deeper task decomposition
-- **Persistent memory** — session state and resumable histories
-- **Local-first execution** — private code stays local, tools stay inspectable
-- **Developer-focused runtime** — Python + Rust stack with room to extend the agent surface
-- **Available in 6 languages** — 中文, 日本語, Русский, Français, Tiếng Việt, English
+- Multi-perspective research synthesis
+- Evidence-aware reasoning with explicit uncertainty
+- Guided next steps for reading, testing, and follow-up questions
+- Private local workflow options
+- Available in 6 languages: 中文, 日本語, Русский, Français, Tiếng Việt, English
 
 ---
 
 ## Requirements
 
-- **Python 3.10+** (free download for Windows/Mac/Linux)
+- **Python 3.10+**
 - **Optional:** LM Studio or Ollama for local AI models
 - **Optional:** Rust toolchain for the fast runtime layer
 
-Python works without any of the optional parts. The more you add, the faster and more powerful it gets.
+Python works without the optional pieces. Adding them expands the local/private path.
 
 ---
 
 ## Documentation
 
-- [Start Here](START_HERE.md) — Guided walkthrough
+- [Start Here](START_HERE.md)
 - [Beginner Guide](docs/getting-started/README.md)
 - [One-Click Install](docs/one-click-bootstrap.md)
 - [Troubleshooting](docs/troubleshooting.md)
@@ -142,7 +154,7 @@ Python works without any of the optional parts. The more you add, the faster and
 <details>
 <summary>Click to expand</summary>
 
-R.A.I.N. Lab is built in Python + Rust. If you want to hack on the runtime:
+If you want to contribute to R.A.I.N. Lab or run the developer setup locally:
 
 ```bash
 git clone https://github.com/topherchris420/james_library.git
@@ -153,7 +165,7 @@ uv python install 3.12
 uv venv .venv --python 3.12
 uv pip sync --python .venv/bin/python requirements-dev-pinned.txt
 
-# Rust setup (optional, for the fast runtime)
+# Rust setup (optional, for the fast runtime layer)
 cargo build --release --locked
 
 # Run
@@ -161,11 +173,14 @@ uv run --python .venv/bin/python rain_lab.py --mode first-run
 ```
 
 Recommended mental model:
-- Python handles launcher flows and orchestration
-- Rust handles the fast runtime, tool surface, and lower-level infrastructure
-- The product wedge is a local-first autonomous coding agent for Rust, Python, and hardware-adjacent workflows
+
+- R.A.I.N. Lab is the product experience.
+- James is the assistant users interact with inside that product.
+- Python handles launcher flows and orchestration.
+- Rust handles the fast runtime, tool surface, and lower-level infrastructure.
 
 **Testing:**
+
 ```bash
 ruff check .
 pytest -q
@@ -173,7 +188,7 @@ cargo fmt --all
 cargo clippy --all-targets -- -D warnings
 ```
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) and [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+See [ARCHITECTURE.md](ARCHITECTURE.md) and [CONTRIBUTING.md](CONTRIBUTING.md) for contributor details.
 
 </details>
 
@@ -181,7 +196,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) and [CONTRIBUTING.md](CONTRIBUTING.md) fo
 
 ## License
 
-MIT. Built by [Vers3Dynamics](https://vers3dynamics.com/), special thanks to ZeroClaw
+MIT. Built by [Vers3Dynamics](https://vers3dynamics.com/), special thanks to ZeroClaw.
 
 <a href="https://star-history.com/#topherchris420/james_library&type=date">
   <img src="https://api.star-history.com/image?repos=topherchris420/james_library&type=date&theme=dark" alt="Star History" width="200" />
