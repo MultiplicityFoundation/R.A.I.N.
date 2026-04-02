@@ -141,6 +141,8 @@ def test_homepage_shows_research_panel_positioning_and_no_longer_shows_coding_ag
     assert "expert panel in a box" in html
     assert "Different perspectives, not one flat answer" in html
     assert "Search tools help you find papers. R.A.I.N. Lab helps you think with a room full of experts." in html
+    assert "How should I interpret these conflicting findings, and what evidence separates the leading explanations?" in html
     assert "The local-first autonomous coding agent for Rust, Python, and hardware teams" not in html
     assert "Your engineering task or question" not in html
     assert "Run the task ->" not in html
+    assert "What mechanism best explains fast radio bursts" not in html
