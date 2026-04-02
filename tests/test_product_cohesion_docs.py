@@ -35,7 +35,7 @@ README_EXPERT_SUMMARY = (
 README_ASSISTANT_LINE_PATTERN = re.compile(
     r"James is the assistant inside (?:the )?R\.A\.I\.N\. Lab\."
 )
-README_HOSTED_URL = "https://lab.vers3dynamics.com"
+README_HOSTED_URL = "https://rainlabteam.vercel.app"
 
 LEGACY_DOC_MARKERS = (
     "MultiplicityFoundation/R.A.I.N.",
