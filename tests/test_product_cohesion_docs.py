@@ -32,6 +32,23 @@ def _read(repo_root: Path, rel_path: str) -> str:
     return (repo_root / rel_path).read_text(encoding="utf-8")
 
 
+def test_readme_leads_with_research_panel_positioning(repo_root: Path) -> None:
+    text = _read(repo_root, "README.md")
+
+    for fragment in (
+        "# R.A.I.N. Lab",
+        "A private-by-default expert panel in a box for researchers, independent thinkers, and R&D teams.",
+        "Ask a raw research question. R.A.I.N. Lab assembles multiple expert perspectives, grounds strong claims in papers or explicit evidence, and returns the strongest explanations, disagreements, and next moves.",
+        "Most tools help you find papers. R.A.I.N. Lab helps you think with a room full of experts.",
+        "James is the assistant inside R.A.I.N. Lab",
+        "https://lab.vers3dynamics.com",
+    ):
+        assert fragment in text, f"README.md is missing required positioning marker: {fragment!r}"
+
+    assert "# James and the R.A.I.N. Lab" not in text
+    assert "The local-first autonomous coding agent runtime for Rust, Python, and hardware-adjacent teams." not in text
+
+
 def test_primary_docs_keep_current_install_story(repo_root: Path) -> None:
     for rel_path, expected_fragments in PRIMARY_DOC_EXPECTATIONS.items():
         text = _read(repo_root, rel_path)
