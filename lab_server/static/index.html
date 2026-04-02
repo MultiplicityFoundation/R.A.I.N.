@@ -3,338 +3,148 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>R.A.I.N. Lab - Local-first autonomous coding agent runtime</title>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    :root {
-      --bg: #0d0f14;
-      --surface: #161923;
-      --border: #2a2f3d;
-      --cyan: #22d3ee;
-      --magenta: #c026d3;
-      --green: #4ade80;
-      --yellow: #facc15;
-      --text: #e2e8f0;
-      --muted: #64748b;
-      --radius: 10px;
-    }
-
-    body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: "Inter", system-ui, sans-serif;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 2rem 1rem 4rem;
-    }
-
-    header {
-      text-align: center;
-      margin-bottom: 2.5rem;
-      max-width: 920px;
-    }
-
-    .logo {
-      font-size: 0.75rem;
-      letter-spacing: 0.25em;
-      color: var(--muted);
-      text-transform: uppercase;
-      margin-bottom: 0.5rem;
-    }
-
-    h1 {
-      font-size: clamp(1.6rem, 4vw, 2.7rem);
-      font-weight: 700;
-      background: linear-gradient(90deg, var(--cyan), var(--magenta));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      line-height: 1.15;
-    }
-
-    .tagline {
-      margin-top: 0.75rem;
-      color: var(--text);
-      font-size: 1rem;
-      line-height: 1.6;
-    }
-
-    .subcopy {
-      margin-top: 1rem;
-      color: var(--muted);
-      font-size: 0.95rem;
-      line-height: 1.7;
-      max-width: 760px;
-    }
-
-    .card {
-      width: 100%;
-      max-width: 720px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 1.75rem;
-    }
-
-    label {
-      display: block;
-      font-size: 0.8rem;
-      font-weight: 600;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: var(--muted);
-      margin-bottom: 0.5rem;
-    }
-
-    textarea {
-      width: 100%;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      color: var(--text);
-      font-size: 1rem;
-      padding: 0.75rem 1rem;
-      resize: vertical;
-      min-height: 80px;
-      outline: none;
-      transition: border-color 0.15s;
-      font-family: inherit;
-    }
-
-    textarea:focus { border-color: var(--cyan); }
-
-    .presets {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-      gap: 0.6rem;
-      margin-top: 1.25rem;
-    }
-
-    .preset-btn {
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      color: var(--muted);
-      cursor: pointer;
-      font-size: 0.82rem;
-      font-weight: 500;
-      padding: 0.55rem 0.75rem;
-      text-align: left;
-      transition: border-color 0.15s, color 0.15s;
-    }
-
-    .preset-btn:hover { border-color: var(--cyan); color: var(--text); }
-
-    .preset-btn.active {
-      border-color: var(--cyan);
-      color: var(--cyan);
-      background: rgba(34, 211, 238, 0.06);
-    }
-
-    .preset-btn .preset-icon { margin-right: 0.3rem; }
-
-    button[type="submit"] {
-      margin-top: 1.5rem;
-      width: 100%;
-      background: linear-gradient(90deg, var(--cyan), var(--magenta));
-      border: none;
-      border-radius: 6px;
-      color: #000;
-      cursor: pointer;
-      font-size: 1rem;
-      font-weight: 700;
-      padding: 0.85rem;
-      transition: opacity 0.15s;
-    }
-
-    button[type="submit"]:hover { opacity: 0.9; }
-    button[type="submit"]:disabled { opacity: 0.4; cursor: not-allowed; }
-
-    #status {
-      margin-top: 1rem;
-      font-size: 0.85rem;
-      color: var(--muted);
-      min-height: 1.2em;
-      text-align: center;
-    }
-
-    #output {
-      margin-top: 1.5rem;
-      display: none;
-      width: 100%;
-      max-width: 720px;
-    }
-
-    .output-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 1.75rem;
-    }
-
-    .output-topic {
-      font-size: 0.75rem;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: var(--cyan);
-      margin-bottom: 1rem;
-    }
-
-    .output-body {
-      font-size: 0.95rem;
-      line-height: 1.75;
-      color: var(--text);
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-
-    .output-body strong { color: var(--yellow); }
-
-    .share-hint {
-      margin-top: 1rem;
-      font-size: 0.8rem;
-      color: var(--muted);
-      text-align: center;
-    }
-
-    .spinner {
-      display: inline-block;
-      width: 14px;
-      height: 14px;
-      border: 2px solid var(--muted);
-      border-top-color: var(--cyan);
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
-      vertical-align: middle;
-      margin-right: 0.4rem;
-    }
-
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    footer {
-      margin-top: 3rem;
-      font-size: 0.75rem;
-      color: var(--muted);
-      text-align: center;
-    }
-
-    footer a { color: var(--muted); text-decoration: none; }
-    footer a:hover { color: var(--text); }
-  </style>
+  <meta
+    name="description"
+    content="R.A.I.N. Lab runs a private research panel in a box. Ask a question, get multiple expert angles, and receive evidence-tied synthesis."
+  />
+  <title>R.A.I.N. Lab | Research panel in a box</title>
+  <link rel="stylesheet" href="/static/homepage.css" />
+  <script defer src="/static/homepage.js"></script>
 </head>
 <body>
+  <div class="page-shell">
+    <header class="hero">
+      <div class="hero__eyebrow">R.A.I.N. Lab / private research panel</div>
+      <div class="hero__content">
+        <div class="hero__copy">
+          <p class="hero__kicker">expert panel in a box</p>
+          <h1>Ask a research question. Get a room full of experts.</h1>
+          <p class="hero__lede">
+            Private by default. Strong claims tied to papers or explicit evidence.
+          </p>
+          <p class="hero__support">
+            Broad enough for independent researchers, focused enough for serious work: one
+            question in, several disciplined viewpoints out, and a synthesis that shows where
+            the evidence actually lands.
+          </p>
+          <div class="trustline" aria-label="Trust line">
+            Private by default. Strong claims tied to papers or explicit evidence.
+          </div>
+        </div>
 
-<header>
-  <div class="logo">R.A.I.N. Lab - vers3dynamics</div>
-  <h1>The local-first autonomous coding agent for Rust, Python, and hardware teams</h1>
-  <p class="tagline">Code-aware agents, long-loop context control, and safer autonomous workflows on your own machine.</p>
-  <p class="subcopy">
-    Give James a real engineering question. The agents inspect the task from multiple angles,
-    pressure-test weak spots, and return something you can actually use.
-  </p>
-</header>
+        <form class="question-card" id="question-form">
+          <label for="question" class="question-card__label">Ask the panel</label>
+          <textarea
+            id="question"
+            name="question"
+            rows="5"
+            maxlength="500"
+            placeholder="For example: What mechanism best explains fast radio bursts, and what evidence still argues against the leading view?"
+            required
+          ></textarea>
 
-<div class="card">
-  <form id="form">
-    <label for="topic">Your engineering task or question</label>
-    <textarea
-      id="topic"
-      name="topic"
-      placeholder="e.g. Inspect src/agent/history.rs and explain how the long-loop memory path works."
-      maxlength="500"
-      required
-    ></textarea>
+          <div class="example-prompts" aria-label="Example questions">
+            <button type="button" class="example-prompts__item" data-question="What mechanism best explains fast radio bursts, and what evidence still argues against the leading view?">
+              Fast radio bursts
+            </button>
+            <button type="button" class="example-prompts__item" data-question="Which biomarkers would most improve early detection in this disease area?">
+              Biomarkers
+            </button>
+            <button type="button" class="example-prompts__item" data-question="What is the strongest interpretation of these conflicting trial results?">
+              Conflicting trials
+            </button>
+            <button type="button" class="example-prompts__item" data-question="What would a skeptical reviewer say is missing from this argument?">
+              Skeptical reviewer
+            </button>
+          </div>
 
-    <div style="margin-top:1.25rem">
-      <label>Choose a mode</label>
-      <div class="presets">
-        <button type="button" class="preset-btn active" data-preset="startup-debate">
-          <span class="preset-icon">⚔️</span> Architecture Review
-        </button>
-        <button type="button" class="preset-btn" data-preset="idea-roast">
-          <span class="preset-icon">🔥</span> Break My Plan
-        </button>
-        <button type="button" class="preset-btn" data-preset="explain-like-im-12">
-          <span class="preset-icon">🧠</span> Explain The System
-        </button>
-        <button type="button" class="preset-btn" data-preset="free">
-          <span class="preset-icon">✏️</span> Free Form
-        </button>
+          <button class="question-card__submit" type="submit" id="submit-button">
+            Start the debate
+          </button>
+          <p class="question-card__status" id="status" aria-live="polite"></p>
+        </form>
       </div>
-    </div>
+    </header>
 
-    <button type="submit" id="submit-btn">Run the task -&gt;</button>
-    <div id="status"></div>
-  </form>
-</div>
+    <section class="value-strip" aria-label="Why this is different">
+      <article class="value-card">
+        <p class="value-card__eyebrow">Different perspectives</p>
+        <h2>Different perspectives, not one flat answer</h2>
+        <p>Four specialists pressure-test the question so you see where they agree, where they diverge, and what is still unresolved.</p>
+      </article>
+      <article class="value-card">
+        <p class="value-card__eyebrow">Evidence first</p>
+        <h2>Claims grounded in papers</h2>
+        <p>Strong statements are tied back to explicit sources so you can inspect the trail instead of trusting a black box.</p>
+      </article>
+      <article class="value-card">
+        <p class="value-card__eyebrow">Actionable synthesis</p>
+        <h2>Synthesis you can act on</h2>
+        <p>The end state is not just debate. It is a practical summary of what to read, test, or challenge next.</p>
+      </article>
+    </section>
 
-<div id="output">
-  <div class="output-card">
-    <div class="output-topic" id="output-topic"></div>
-    <div class="output-body" id="output-body"></div>
+    <section class="how-it-works" aria-labelledby="how-it-works-title">
+      <div class="section-heading">
+        <p class="section-heading__eyebrow">How it works</p>
+        <h2 id="how-it-works-title">A live debate, without the noise of a live stream.</h2>
+      </div>
+
+      <div class="steps">
+        <article class="step-card">
+          <span class="step-card__number">01</span>
+          <h3>Ask one precise question</h3>
+          <p>Start with a mechanism, interpretation, or decision point. The homepage lead example is written for independent researchers, but the panel works across domains.</p>
+        </article>
+        <article class="step-card">
+          <span class="step-card__number">02</span>
+          <h3>Watch the panel form</h3>
+          <p>The response arrives as a structured set of expert notes. The browser then stages the reveal so the experience feels like a room thinking together.</p>
+        </article>
+        <article class="step-card">
+          <span class="step-card__number">03</span>
+          <h3>Use the synthesis</h3>
+          <p>You get the panel notes, the evidence trail, and the final synthesis in one place so the next move is obvious.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="results" id="results" hidden aria-live="polite">
+      <div class="section-heading results__heading">
+        <p class="section-heading__eyebrow">Live debate</p>
+        <h2 id="results-title">Your panel is in session.</h2>
+        <p class="results__summary" id="results-summary"></p>
+      </div>
+
+      <div class="results__meta">
+        <div class="meta-pill" id="results-panel-title"></div>
+        <div class="meta-pill meta-pill--muted" id="results-grounding"></div>
+      </div>
+
+      <div class="panel-grid" id="panel-notes" aria-label="Expert panel notes"></div>
+
+      <article class="synthesis-card" id="synthesis-card">
+        <div class="synthesis-card__eyebrow">Panel synthesis</div>
+        <h3>What the debate converged on</h3>
+        <p id="synthesis-text"></p>
+        <div class="evidence-list" id="synthesis-evidence"></div>
+      </article>
+    </section>
+
+    <section class="why" aria-labelledby="why-title">
+      <div class="why__content">
+        <p class="section-heading__eyebrow">Why this exists</p>
+        <h2 id="why-title">Search tools help you find papers. R.A.I.N. Lab helps you think with a room full of experts.</h2>
+      </div>
+      <p class="why__copy">
+        The point is not generic summarization. It is a private, evidence-tied debate that makes
+        missed angles visible quickly, then hands you the synthesis in a form you can use.
+      </p>
+    </section>
+
+    <footer class="footer">
+      <p>R.A.I.N. Lab runs locally, stays auditable, and keeps your research question private by default.</p>
+    </footer>
   </div>
-  <div class="share-hint">Run it again with a different mode to pressure-test the task from another angle.</div>
-</div>
-
-<footer>
-  <a href="https://vers3dynamics.com" target="_blank" rel="noopener">vers3dynamics.com</a>
-  &nbsp;·&nbsp; Powered by R.A.I.N. - runs locally, understands code, stays auditable.
-</footer>
-
-<script>
-  const form = document.getElementById('form');
-  const submitBtn = document.getElementById('submit-btn');
-  const statusEl = document.getElementById('status');
-  const outputEl = document.getElementById('output');
-  const outputTopic = document.getElementById('output-topic');
-  const outputBody = document.getElementById('output-body');
-
-  let selectedPreset = 'startup-debate';
-
-  document.querySelectorAll('.preset-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      selectedPreset = btn.dataset.preset;
-    });
-  });
-
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const topic = document.getElementById('topic').value.trim();
-    if (!topic) return;
-
-    submitBtn.disabled = true;
-    outputEl.style.display = 'none';
-    statusEl.innerHTML = '<span class="spinner"></span> James and the agents are working through the task...';
-
-    try {
-      const res = await fetch('/debate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic, preset: selectedPreset }),
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: 'Unknown error' }));
-        throw new Error(err.detail || `Error ${res.status}`);
-      }
-
-      const data = await res.json();
-      outputTopic.textContent = data.topic;
-      outputBody.textContent = data.result;
-      outputEl.style.display = 'block';
-      outputEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      statusEl.textContent = '';
-    } catch (err) {
-      statusEl.textContent = `Something went wrong: ${err.message}`;
-    } finally {
-      submitBtn.disabled = false;
-    }
-  });
-</script>
 </body>
 </html>

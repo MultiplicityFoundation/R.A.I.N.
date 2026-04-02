@@ -127,3 +127,20 @@ def test_run_research_panel_normalizes_synthesis_provenance(monkeypatch) -> None
     assert result["synthesis_evidence_sources"] == ["Paper A.md", "Example Paper"]
     assert result["grounded"] is True
     assert result["confidence"] == 0.71
+
+
+def test_homepage_shows_research_panel_positioning_and_no_longer_shows_coding_agent_copy() -> None:
+    client = TestClient(lab_app.app)
+
+    response = client.get("/")
+    html = response.text
+
+    assert response.status_code == 200
+    assert "Ask a research question. Get a room full of experts." in html
+    assert "Private by default. Strong claims tied to papers or explicit evidence." in html
+    assert "expert panel in a box" in html
+    assert "Different perspectives, not one flat answer" in html
+    assert "Search tools help you find papers. R.A.I.N. Lab helps you think with a room full of experts." in html
+    assert "The local-first autonomous coding agent for Rust, Python, and hardware teams" not in html
+    assert "Your engineering task or question" not in html
+    assert "Run the task ->" not in html
