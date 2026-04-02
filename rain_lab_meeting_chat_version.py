@@ -556,7 +556,7 @@ class Config:
     model_name: str = DEFAULT_MODEL_NAME
 
     max_tokens: int = field(
-        default_factory=lambda: int(os.environ.get("RAIN_CHAT_MAX_TOKENS", "320"))
+        default_factory=lambda: int(os.environ.get("RAIN_CHAT_MAX_TOKENS", "512"))
     )  # Enough tokens for agents to complete their thoughts
 
     timeout: float = float(os.environ.get("RAIN_LM_TIMEOUT", "300"))
@@ -3039,7 +3039,7 @@ Use these links to propose creative cross-paper insights if relevant.
 
                 is_corrupted, corruption_reason = self._is_corrupted_response(content)
 
-                if is_corrupted and corruption_reason in {"Response too short", "Incomplete sentence"}:
+                if is_corrupted and corruption_reason == "Incomplete sentence":
                     repaired = self._repair_too_short_response(
                         agent=agent,
                         topic=topic,
@@ -3270,13 +3270,17 @@ Use these links to propose creative cross-paper insights if relevant.
             if pattern.search(normalized):
                 return True, f"Corruption pattern detected: {pattern.pattern[:20]}"
 
-        if len(normalized) < 10:
-            # Compact answers like "It helps." or "Why?" are valid in beginner/chat mode.
+        if len(normalized) < 20:
+            # Compact answers like "I disagree." or "Why?" are valid in beginner/chat mode.
+            # Only flag genuinely empty or truly broken responses.
             sentence_candidate = normalized.rstrip("'\"”’)]}")
             short_words = re.findall(r"[A-Za-z]+(?:['’-][A-Za-z]+)?", normalized)
-            if sentence_candidate.endswith((".", "!", "?")) and short_words:
+            if short_words and (sentence_candidate.endswith((".", "!", "?")) or len(short_words) >= 2):
                 return False, ""
-            return True, "Response too short"
+            if not short_words:
+                return True, "Response too short"
+            # Brevity is not corruption — the model chose to be concise.
+            return False, ""
 
         if RainLabOrchestrator._looks_truncated_response(None, normalized, None):
             return True, "Incomplete sentence"
