@@ -1,4 +1,4 @@
-# R.A.I.N. Lab
+# 🐙R.A.I.N. Lab
 
 **A private-by-default experts in your pocket for researchers, independent thinkers, and R&D teams.**
 
