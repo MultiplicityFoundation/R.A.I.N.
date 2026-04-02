@@ -2,6 +2,12 @@
 
 **A private-by-default expert panel in a box for researchers, independent thinkers, and R&D teams.**
 
+Ask a raw research question. R.A.I.N. Lab assembles multiple expert perspectives, grounds strong claims in papers or explicit evidence, and returns the strongest explanations, disagreements, and next moves.
+
+Most tools help you find papers. R.A.I.N. Lab helps you think with a room full of experts.
+
+James is the assistant inside R.A.I.N. Lab.
+
 <p align="center">
   <img src="assets/rain_lab.png" alt="R.A.I.N. Lab logo" width="800" />
 </p>
@@ -13,12 +19,6 @@
   <a href="README.fr.md">Français</a> •
   <a href="README.vi.md">Tiếng Việt</a>
 </p>
-
-Ask a raw research question. R.A.I.N. Lab assembles multiple expert perspectives, grounds strong claims in papers or explicit evidence, and returns the strongest explanations, disagreements, and next moves.
-
-James is the assistant inside R.A.I.N. Lab.
-
-Most tools help you find papers. R.A.I.N. Lab helps you think with a room full of experts.
 
 ---
 
