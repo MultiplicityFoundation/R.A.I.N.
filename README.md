@@ -1,4 +1,4 @@
-# 🐙R.A.I.N. Lab
+# R.A.I.N. Lab
 
 **A private-by-default expert panel in a box for researchers, independent thinkers, and R&D teams.**
 
