@@ -82,14 +82,17 @@ On macOS/Linux, run `./install.sh` for a one-click setup.
 
 ## Why It Is Different
 
-Most research tools optimize for retrieval. R.A.I.N. Lab is designed for synthesis, challenge, and judgment.
+Most research tools optimize for retrieval. Most agent frameworks stop at "LLM plus a tool or two." R.A.I.N. Lab is designed for synthesis, challenge, judgment, and real-world action.
 
-| Typical tool behavior | R.A.I.N. Lab behavior |
-|-----------------------|-----------------------|
+| Typical tool / agent framework | R.A.I.N. Lab |
+|---------------------------------|--------------|
 | Returns a list of papers or links | Returns competing interpretations and strongest next moves |
 | Treats the first plausible answer as good enough | Preserves disagreements and uncertainty where it matters |
 | Hides reasoning behind one-shot summaries | Makes evidence, gaps, and confidence easier to inspect |
 | Assumes cloud-first workflows | Supports local and private usage paths |
+| Talks to one model, on one platform | 10+ model providers, 25+ messaging channels, 60+ tools |
+| Software only | Controls hardware — Arduino, STM32, Raspberry Pi |
+| Generic agent loop | Neuroscience models, knowledge graphs, semantic memory, multi-agent swarms |
 
 ---
 
@@ -157,6 +160,68 @@ Join a research meeting, explore disagreements, and leave with next steps — no
 - Guided next steps for reading, testing, and follow-up questions
 - Private local workflow options
 - Available in 6 languages: 中文, 日本語, Русский, Français, Tiếng Việt, English
+
+---
+
+## What James Can Actually Do
+
+Most multi-agent systems stop at "chat with an LLM." James is a full research operating system with real-world reach.
+
+<details>
+<summary><b>Talk to any major AI model</b></summary>
+
+James connects to 10+ model providers out of the box — OpenAI, Anthropic, Google Gemini, Ollama (local), Azure, AWS Bedrock, OpenRouter, and more. Switch models mid-conversation or let James route automatically based on the question.
+
+</details>
+
+<details>
+<summary><b>Reach you wherever you are</b></summary>
+
+James can live inside Telegram, Discord, Slack, WhatsApp, email, Matrix, Signal, iMessage, IRC, Bluesky, Reddit, Twitter/X, Nostr, DingTalk, Lark/Feishu, WeChat/WeCom, and more. Your research assistant meets you where you already work.
+
+</details>
+
+<details>
+<summary><b>Remember what matters</b></summary>
+
+Built-in memory with multiple backends — local SQLite, Markdown files, Postgres, Qdrant vector search, and semantic recall. James remembers your preferences, past research, and evolving context across sessions.
+
+</details>
+
+<details>
+<summary><b>Use real tools, not just words</b></summary>
+
+60+ built-in tools: shell commands, file operations, git, web search, web browsing, HTTP APIs, PDF reading, screenshots, calculators, cron scheduling, Jira, Notion, Google Workspace, Microsoft 365, LinkedIn, and more. James does not just suggest actions — he takes them.
+
+</details>
+
+<details>
+<summary><b>Connect to the physical world</b></summary>
+
+Hardware peripheral support for Arduino, STM32 Nucleo boards, and Raspberry Pi GPIO. Flash firmware, read sensors, and control hardware directly from a research conversation. This is not typical for an AI assistant.
+
+</details>
+
+<details>
+<summary><b>Think with your brain (literally)</b></summary>
+
+New: TRIBE v2 integration predicts fMRI brain activation patterns from video, audio, or text using Facebook Research's brain-encoding model. Run neuroscience experiments from inside a chat. (CC-BY-NC 4.0, non-commercial.)
+
+</details>
+
+<details>
+<summary><b>Coordinate teams of agents</b></summary>
+
+Multi-agent delegation and swarm orchestration let James spin up specialized sub-agents for parallel research tracks, then synthesize their findings. Not a chatbot — a research team.
+
+</details>
+
+<details>
+<summary><b>Stay secure by default</b></summary>
+
+Deny-by-default security policy, sandboxed execution, encrypted secrets, domain allowlists, rate limiting, and audit logging. Built for people who care about what runs on their machine.
+
+</details>
 
 ---
 
