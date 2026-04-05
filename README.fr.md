@@ -23,6 +23,10 @@
 
 Flux d'exécution : `Utilisateur -> interface R.A.I.N. Lab -> runtime R.A.I.N. -> workflows de recherche James Library -> API modèle/provider`
 
+## Toutes les capacités de James
+
+James n'est pas un simple chat multi-agents — c'est un véritable système d'exploitation pour la recherche : 10+ fournisseurs de modèles, 25+ plateformes de messagerie, 60+ outils intégrés, contrôle matériel (Arduino, STM32, Raspberry Pi), modèle neuroscientifique d'encodage cérébral (TRIBE v2), graphe de connaissances, mémoire sémantique, et plus encore. Liste complète dans le [`README.md` anglais - What James Can Actually Do](README.md#what-james-can-actually-do).
+
 ## À qui s'adresse R.A.I.N. Lab
 
 R.A.I.N. Lab est conçu pour les personnes qui ont besoin de réponses défendables, pas simplement de réponses qui sonnent bien.

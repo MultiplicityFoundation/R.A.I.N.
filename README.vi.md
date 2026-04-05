@@ -23,6 +23,10 @@
 
 Luồng chạy: `Người dùng -> giao diện R.A.I.N. Lab -> runtime R.A.I.N. -> quy trình nghiên cứu James Library -> API model/provider`
 
+## Toàn bộ khả năng của James
+
+James không chỉ là một hệ thống chat đa agent — đó là một hệ điều hành nghiên cứu hoàn chỉnh: 10+ nhà cung cấp mô hình, 25+ nền tảng nhắn tin, 60+ công cụ tích hợp, điều khiển phần cứng (Arduino, STM32, Raspberry Pi), mô hình mã hóa não thần kinh học (TRIBE v2), đồ thị tri thức, bộ nhớ ngữ nghĩa, và nhiều hơn nữa. Danh sách đầy đủ tại [`README.md` tiếng Anh - What James Can Actually Do](README.md#what-james-can-actually-do).
+
 ## Dành cho ai
 
 R.A.I.N. Lab được xây dựng cho những người cần câu trả lời có thể bảo vệ được, chứ không chỉ những câu trả lời nghe có vẻ hay.
