@@ -5,7 +5,7 @@ FastAPI server so the Rust-side ``tribev2_predict`` tool can call it over HTTP.
 
 Usage::
 
-    python server.py                      # 0.0.0.0:8100
+    python server.py                      # 127.0.0.1:8100
     python server.py --port 9000          # custom port
     python server.py --cache-dir ./cache  # custom HuggingFace cache
 

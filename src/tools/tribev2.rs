@@ -7,10 +7,13 @@
 //! **License**: TRIBE v2 is CC-BY-NC 4.0 (non-commercial use only).
 
 use super::traits::{Tool, ToolResult};
+use crate::security::policy::ToolOperation;
+use crate::security::SecurityPolicy;
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::fmt::Write;
+use std::sync::Arc;
 use std::time::Duration;
 
 const CONNECT_TIMEOUT_SECS: u64 = 10;
@@ -45,13 +48,15 @@ struct HealthResponse {
 
 /// Predicts fMRI brain responses from multimedia via a TRIBE v2 sidecar service.
 pub struct TribeV2Tool {
+    security: Arc<SecurityPolicy>,
     endpoint: String,
     timeout_secs: u64,
 }
 
 impl TribeV2Tool {
-    pub fn new(endpoint: String, timeout_secs: u64) -> Self {
+    pub fn new(endpoint: String, timeout_secs: u64, security: Arc<SecurityPolicy>) -> Self {
         Self {
+            security,
             endpoint: endpoint.trim_end_matches('/').to_string(),
             timeout_secs,
         }
@@ -110,6 +115,12 @@ impl TribeV2Tool {
                 e
             )
         })?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_body = response.text().await.unwrap_or_default();
+            anyhow::bail!("TRIBE v2 sidecar health check returned HTTP {status}: {error_body}");
+        }
 
         let result: HealthResponse = response.json().await?;
         Ok(format!(
@@ -191,6 +202,21 @@ impl Tool for TribeV2Tool {
             .get("action")
             .and_then(|v| v.as_str())
             .unwrap_or("predict");
+
+        let operation = match action {
+            "health" => ToolOperation::Read,
+            _ => ToolOperation::Act,
+        };
+        if let Err(error) = self
+            .security
+            .enforce_tool_operation(operation, "tribev2_predict")
+        {
+            return Ok(ToolResult {
+                success: false,
+                output: String::new(),
+                error: Some(error.to_string()),
+            });
+        }
 
         match action {
             "health" => match self.health().await {
@@ -274,7 +300,11 @@ mod tests {
     use super::*;
 
     fn make_tool() -> TribeV2Tool {
-        TribeV2Tool::new("http://127.0.0.1:8100".into(), 120)
+        TribeV2Tool::new(
+            "http://127.0.0.1:8100".into(),
+            120,
+            Arc::new(SecurityPolicy::default()),
+        )
     }
 
     #[test]
@@ -322,7 +352,11 @@ mod tests {
 
     #[test]
     fn endpoint_trailing_slash_stripped() {
-        let tool = TribeV2Tool::new("http://localhost:8100/".into(), 60);
+        let tool = TribeV2Tool::new(
+            "http://localhost:8100/".into(),
+            60,
+            Arc::new(SecurityPolicy::default()),
+        );
         assert_eq!(tool.endpoint, "http://localhost:8100");
     }
 
