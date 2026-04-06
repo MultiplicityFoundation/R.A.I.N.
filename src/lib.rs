@@ -45,7 +45,7 @@ pub(crate) mod cli_input;
 pub mod commands;
 pub mod config;
 pub(crate) mod cost;
-pub(crate) mod cron;
+pub mod cron;
 pub(crate) mod daemon;
 pub(crate) mod doctor;
 pub mod gateway;
@@ -66,6 +66,7 @@ pub(crate) mod onboard;
 pub mod peripherals;
 pub mod providers;
 pub mod rag;
+pub mod routines;
 pub mod runtime;
 pub(crate) mod security;
 pub(crate) mod service;
@@ -79,6 +80,8 @@ pub(crate) mod skills;
     reason = "Tooling modules still have a few mirrored transport/workspace names slated for follow-up cleanup."
 )]
 pub mod tools;
+pub(crate) mod trust;
+pub mod tui;
 pub(crate) mod tunnel;
 pub(crate) mod util;
 pub mod verifiable_intent;
@@ -169,6 +172,15 @@ pub enum ServiceCommands {
     Status,
     /// Uninstall daemon service unit
     Uninstall,
+    /// View daemon service logs
+    Logs {
+        /// Number of log lines to display
+        #[arg(short = 'n', long, default_value = "50")]
+        lines: usize,
+        /// Follow log output in real time
+        #[arg(short, long)]
+        follow: bool,
+    },
 }
 
 /// Channel management subcommands
@@ -264,6 +276,14 @@ pub enum SkillCommands {
     Remove {
         /// Skill name to remove
         name: String,
+    },
+    /// Run tests for installed skills
+    Test {
+        /// Skill name to test (all if omitted)
+        name: Option<String>,
+        /// Show verbose output
+        #[arg(long)]
+        verbose: bool,
     },
 }
 
@@ -567,4 +587,21 @@ Examples:
     },
     /// Flash R.A.I.N. firmware to Nucleo-F401RE (builds + probe-rs run)
     FlashNucleo,
+}
+
+/// SOP management subcommands
+#[derive(Subcommand, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum SopCommands {
+    /// List all configured SOPs
+    List,
+    /// Validate SOP definitions
+    Validate {
+        /// SOP name to validate (all if omitted)
+        name: Option<String>,
+    },
+    /// Show details of a specific SOP
+    Show {
+        /// SOP name to display
+        name: String,
+    },
 }

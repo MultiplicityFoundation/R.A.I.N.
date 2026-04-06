@@ -237,6 +237,9 @@ impl ResonanceMemory {
                     timestamp,
                     session_id,
                     score: None,
+                    namespace: "default".into(),
+                    importance: None,
+                    superseded_by: None,
                 },
                 intrinsic_frequency: vector::bytes_to_vec(&embedding_blob),
                 mass_equivalent,
@@ -403,6 +406,9 @@ impl Memory for ResonanceMemory {
                     timestamp: row.get(4)?,
                     session_id: row.get(5)?,
                     score: None,
+                    namespace: "default".into(),
+                    importance: None,
+                    superseded_by: None,
                 })
             })?;
             match rows.next() {
@@ -451,6 +457,9 @@ impl Memory for ResonanceMemory {
                     timestamp: row.get(4)?,
                     session_id: row.get(5)?,
                     score: None,
+                    namespace: "default".into(),
+                    importance: None,
+                    superseded_by: None,
                 })
             })?;
 

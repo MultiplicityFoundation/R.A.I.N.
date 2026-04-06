@@ -904,6 +904,7 @@ impl Channel for MatrixChannel {
                         .as_secs(),
                     thread_ts: thread_ts.clone(),
                     interruption_scope_id: thread_ts,
+                    attachments: Vec::new(),
                 };
 
                 let _ = tx.send(msg).await;

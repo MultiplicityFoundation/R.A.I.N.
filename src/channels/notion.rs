@@ -361,6 +361,7 @@ impl Channel for NotionChannel {
                                 timestamp,
                                 thread_ts: None,
                                 interruption_scope_id: None,
+                                attachments: Vec::new(),
                             })
                             .await
                             .is_err()

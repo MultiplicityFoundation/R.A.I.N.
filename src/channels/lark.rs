@@ -909,6 +909,7 @@ impl LarkChannel {
                             .as_secs(),
                         thread_ts: None,
                         interruption_scope_id: None,
+                        attachments: Vec::new(),
                     };
 
                     tracing::debug!("Lark WS: message in {}", lark_msg.chat_id);
@@ -1207,6 +1208,7 @@ impl LarkChannel {
             timestamp,
             thread_ts: None,
             interruption_scope_id: None,
+            attachments: Vec::new(),
         });
 
         messages

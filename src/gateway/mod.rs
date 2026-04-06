@@ -1953,7 +1953,8 @@ mod tests {
     #[test]
     fn gateway_timeout_falls_back_to_default() {
         // When env var is not set, should return the default constant
-        std::env::remove_var("rain_GATEWAY_TIMEOUT_SECS");
+        // SAFETY: single-threaded test/init context
+        unsafe { std::env::remove_var("rain_GATEWAY_TIMEOUT_SECS"); }
         assert_eq!(gateway_request_timeout_secs(), 30);
     }
 
@@ -2279,6 +2280,7 @@ mod tests {
             timestamp: 1,
             thread_ts: None,
             interruption_scope_id: None,
+            attachments: Vec::new(),
         };
 
         let key = whatsapp_memory_key(&msg);

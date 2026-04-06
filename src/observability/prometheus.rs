@@ -350,6 +350,10 @@ impl Observer for PrometheusObserver {
                     .with_label_values(&[hand_name.as_str()])
                     .observe(*duration_ms as f64 / 1000.0);
             }
+            ObserverEvent::DeploymentStarted { .. } => {}
+            ObserverEvent::DeploymentCompleted { .. } => {}
+            ObserverEvent::DeploymentFailed { .. } => {}
+            ObserverEvent::RecoveryCompleted { .. } => {}
         }
     }
 
@@ -390,6 +394,8 @@ impl Observer for PrometheusObserver {
                     .with_label_values(&[hand_name.as_str(), success_str])
                     .inc();
             }
+            ObserverMetric::DeploymentLeadTime(_) => {}
+            ObserverMetric::RecoveryTime(_) => {}
         }
     }
 

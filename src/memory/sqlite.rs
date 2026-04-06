@@ -840,6 +840,9 @@ impl SqliteMemory {
                 timestamp: row.get(4)?,
                 session_id: row.get(5)?,
                 score: Some(1.0),
+                namespace: "default".into(),
+                importance: None,
+                superseded_by: None,
             })
         })?;
 
@@ -983,6 +986,9 @@ impl SqliteMemory {
                     timestamp: row.get(4)?,
                     session_id: row.get(5)?,
                     score: None,
+                    namespace: "default".into(),
+                    importance: None,
+                    superseded_by: None,
                 })
             })?;
 
@@ -1252,6 +1258,9 @@ impl Memory for SqliteMemory {
                             timestamp: row.created_at.clone(),
                             session_id: row.session_id.clone(),
                             score: Some(f64::from(scored.final_score)),
+                            namespace: "default".into(),
+                            importance: None,
+                            superseded_by: None,
                         };
                         results.push(entry);
                     }
@@ -1289,6 +1298,9 @@ impl Memory for SqliteMemory {
                     timestamp: row.get(4)?,
                     session_id: row.get(5)?,
                     score: None,
+                    namespace: "default".into(),
+                    importance: None,
+                    superseded_by: None,
                 })
             })?;
 
@@ -1325,6 +1337,9 @@ impl Memory for SqliteMemory {
                     timestamp: row.get(4)?,
                     session_id: row.get(5)?,
                     score: None,
+                    namespace: "default".into(),
+                    importance: None,
+                    superseded_by: None,
                 })
             };
 

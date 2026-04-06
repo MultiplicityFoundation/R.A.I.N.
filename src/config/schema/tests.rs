@@ -1956,7 +1956,8 @@ fn clear_proxy_env_test_vars() {
         "all_proxy",
         "no_proxy",
     ] {
-        std::env::remove_var(key);
+        // SAFETY: single-threaded test/init context
+        unsafe { std::env::remove_var(key); }
     }
 }
 
@@ -1966,11 +1967,13 @@ async fn env_override_api_key() {
     let mut config = Config::default();
     assert!(config.api_key.is_none());
 
-    std::env::set_var("rain_API_KEY", "sk-test-env-key");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_API_KEY", "sk-test-env-key"); }
     config.apply_env_overrides();
     assert_eq!(config.api_key.as_deref(), Some("sk-test-env-key"));
 
-    std::env::remove_var("rain_API_KEY");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_API_KEY"); }
 }
 
 #[test]
@@ -1978,12 +1981,15 @@ async fn env_override_api_key_fallback() {
     let _env_guard = env_override_lock().await;
     let mut config = Config::default();
 
-    std::env::remove_var("rain_API_KEY");
-    std::env::set_var("API_KEY", "sk-fallback-key");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_API_KEY"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("API_KEY", "sk-fallback-key"); }
     config.apply_env_overrides();
     assert_eq!(config.api_key.as_deref(), Some("sk-fallback-key"));
 
-    std::env::remove_var("API_KEY");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("API_KEY"); }
 }
 
 #[test]
@@ -1991,11 +1997,13 @@ async fn env_override_provider() {
     let _env_guard = env_override_lock().await;
     let mut config = Config::default();
 
-    std::env::set_var("rain_PROVIDER", "anthropic");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_PROVIDER", "anthropic"); }
     config.apply_env_overrides();
     assert_eq!(config.default_provider.as_deref(), Some("anthropic"));
 
-    std::env::remove_var("rain_PROVIDER");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_PROVIDER"); }
 }
 
 #[test]
@@ -2003,12 +2011,15 @@ async fn env_override_model_provider_alias() {
     let _env_guard = env_override_lock().await;
     let mut config = Config::default();
 
-    std::env::remove_var("rain_PROVIDER");
-    std::env::set_var("rain_MODEL_PROVIDER", "openai-codex");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_PROVIDER"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_MODEL_PROVIDER", "openai-codex"); }
     config.apply_env_overrides();
     assert_eq!(config.default_provider.as_deref(), Some("openai-codex"));
 
-    std::env::remove_var("rain_MODEL_PROVIDER");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_MODEL_PROVIDER"); }
 }
 
 #[test]
@@ -2047,10 +2058,14 @@ async fn env_override_open_skills_enabled_and_dir() {
         SkillsPromptInjectionMode::Full
     );
 
-    std::env::set_var("rain_OPEN_SKILLS_ENABLED", "true");
-    std::env::set_var("rain_OPEN_SKILLS_DIR", "/tmp/open-skills");
-    std::env::set_var("rain_SKILLS_ALLOW_SCRIPTS", "yes");
-    std::env::set_var("rain_SKILLS_PROMPT_MODE", "compact");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_OPEN_SKILLS_ENABLED", "true"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_OPEN_SKILLS_DIR", "/tmp/open-skills"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_SKILLS_ALLOW_SCRIPTS", "yes"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_SKILLS_PROMPT_MODE", "compact"); }
     config.apply_env_overrides();
 
     assert!(config.skills.open_skills_enabled);
@@ -2064,10 +2079,14 @@ async fn env_override_open_skills_enabled_and_dir() {
         SkillsPromptInjectionMode::Compact
     );
 
-    std::env::remove_var("rain_OPEN_SKILLS_ENABLED");
-    std::env::remove_var("rain_OPEN_SKILLS_DIR");
-    std::env::remove_var("rain_SKILLS_ALLOW_SCRIPTS");
-    std::env::remove_var("rain_SKILLS_PROMPT_MODE");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_OPEN_SKILLS_ENABLED"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_OPEN_SKILLS_DIR"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_SKILLS_ALLOW_SCRIPTS"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_SKILLS_PROMPT_MODE"); }
 }
 
 #[test]
@@ -2078,9 +2097,12 @@ async fn env_override_open_skills_enabled_invalid_value_keeps_existing_value() {
     config.skills.allow_scripts = true;
     config.skills.prompt_injection_mode = SkillsPromptInjectionMode::Compact;
 
-    std::env::set_var("rain_OPEN_SKILLS_ENABLED", "maybe");
-    std::env::set_var("rain_SKILLS_ALLOW_SCRIPTS", "maybe");
-    std::env::set_var("rain_SKILLS_PROMPT_MODE", "invalid");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_OPEN_SKILLS_ENABLED", "maybe"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_SKILLS_ALLOW_SCRIPTS", "maybe"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_SKILLS_PROMPT_MODE", "invalid"); }
     config.apply_env_overrides();
 
     assert!(config.skills.open_skills_enabled);
@@ -2089,9 +2111,12 @@ async fn env_override_open_skills_enabled_invalid_value_keeps_existing_value() {
         config.skills.prompt_injection_mode,
         SkillsPromptInjectionMode::Compact
     );
-    std::env::remove_var("rain_OPEN_SKILLS_ENABLED");
-    std::env::remove_var("rain_SKILLS_ALLOW_SCRIPTS");
-    std::env::remove_var("rain_SKILLS_PROMPT_MODE");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_OPEN_SKILLS_ENABLED"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_SKILLS_ALLOW_SCRIPTS"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_SKILLS_PROMPT_MODE"); }
 }
 
 #[test]
@@ -2099,12 +2124,15 @@ async fn env_override_provider_fallback() {
     let _env_guard = env_override_lock().await;
     let mut config = Config::default();
 
-    std::env::remove_var("rain_PROVIDER");
-    std::env::set_var("PROVIDER", "openai");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_PROVIDER"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("PROVIDER", "openai"); }
     config.apply_env_overrides();
     assert_eq!(config.default_provider.as_deref(), Some("openai"));
 
-    std::env::remove_var("PROVIDER");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("PROVIDER"); }
 }
 
 #[test]
@@ -2115,15 +2143,18 @@ async fn env_override_provider_fallback_does_not_replace_non_default_provider() 
         ..Config::default()
     };
 
-    std::env::remove_var("rain_PROVIDER");
-    std::env::set_var("PROVIDER", "openrouter");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_PROVIDER"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("PROVIDER", "openrouter"); }
     config.apply_env_overrides();
     assert_eq!(
         config.default_provider.as_deref(),
         Some("custom:https://proxy.example.com/v1")
     );
 
-    std::env::remove_var("PROVIDER");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("PROVIDER"); }
 }
 
 #[test]
@@ -2134,13 +2165,17 @@ async fn env_override_zero_claw_provider_overrides_non_default_provider() {
         ..Config::default()
     };
 
-    std::env::set_var("rain_PROVIDER", "openrouter");
-    std::env::set_var("PROVIDER", "anthropic");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_PROVIDER", "openrouter"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("PROVIDER", "anthropic"); }
     config.apply_env_overrides();
     assert_eq!(config.default_provider.as_deref(), Some("openrouter"));
 
-    std::env::remove_var("rain_PROVIDER");
-    std::env::remove_var("PROVIDER");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_PROVIDER"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("PROVIDER"); }
 }
 
 #[test]
@@ -2151,11 +2186,13 @@ async fn env_override_glm_api_key_for_regional_aliases() {
         ..Config::default()
     };
 
-    std::env::set_var("GLM_API_KEY", "glm-regional-key");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("GLM_API_KEY", "glm-regional-key"); }
     config.apply_env_overrides();
     assert_eq!(config.api_key.as_deref(), Some("glm-regional-key"));
 
-    std::env::remove_var("GLM_API_KEY");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("GLM_API_KEY"); }
 }
 
 #[test]
@@ -2166,11 +2203,13 @@ async fn env_override_zai_api_key_for_regional_aliases() {
         ..Config::default()
     };
 
-    std::env::set_var("ZAI_API_KEY", "zai-regional-key");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("ZAI_API_KEY", "zai-regional-key"); }
     config.apply_env_overrides();
     assert_eq!(config.api_key.as_deref(), Some("zai-regional-key"));
 
-    std::env::remove_var("ZAI_API_KEY");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("ZAI_API_KEY"); }
 }
 
 #[test]
@@ -2178,11 +2217,13 @@ async fn env_override_model() {
     let _env_guard = env_override_lock().await;
     let mut config = Config::default();
 
-    std::env::set_var("rain_MODEL", "gpt-4o");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_MODEL", "gpt-4o"); }
     config.apply_env_overrides();
     assert_eq!(config.default_model.as_deref(), Some("gpt-4o"));
 
-    std::env::remove_var("rain_MODEL");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_MODEL"); }
 }
 
 #[test]
@@ -2239,9 +2280,11 @@ async fn model_provider_profile_responses_uses_openai_codex_and_openai_key() {
         ..Config::default()
     };
 
-    std::env::set_var("OPENAI_API_KEY", "sk-test-codex-key");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("OPENAI_API_KEY", "sk-test-codex-key"); }
     config.apply_env_overrides();
-    std::env::remove_var("OPENAI_API_KEY");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("OPENAI_API_KEY"); }
 
     assert_eq!(config.default_provider.as_deref(), Some("openai-codex"));
     assert_eq!(config.api_url.as_deref(), Some("https://api.tonsof.blue"));
@@ -2256,8 +2299,10 @@ async fn save_repairs_bare_config_filename_using_runtime_resolution() {
     let resolved_config_path = temp_home.join(".R.A.I.N.").join("config.toml");
 
     let original_home = std::env::var("HOME").ok();
-    std::env::set_var("HOME", &temp_home);
-    std::env::set_var("rain_WORKSPACE", &workspace_dir);
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("HOME", &temp_home); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_WORKSPACE", &workspace_dir); }
 
     let mut config = Config::default();
     config.workspace_dir = workspace_dir;
@@ -2272,11 +2317,14 @@ async fn save_repairs_bare_config_filename_using_runtime_resolution() {
     let parsed = parse_test_config(&saved);
     assert_eq!(parsed.default_temperature, 0.5);
 
-    std::env::remove_var("rain_WORKSPACE");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_WORKSPACE"); }
     if let Some(home) = original_home {
-        std::env::set_var("HOME", home);
+        // SAFETY: single-threaded test/init context
+        unsafe { std::env::set_var("HOME", home); }
     } else {
-        std::env::remove_var("HOME");
+        // SAFETY: single-threaded test/init context
+        unsafe { std::env::remove_var("HOME"); }
     }
     let _ = tokio::fs::remove_dir_all(temp_home).await;
 }
@@ -2309,9 +2357,11 @@ async fn validate_ollama_cloud_model_accepts_remote_endpoint_and_env_key() {
         ..Config::default()
     };
 
-    std::env::set_var("OLLAMA_API_KEY", "ollama-env-key");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("OLLAMA_API_KEY", "ollama-env-key"); }
     let result = config.validate();
-    std::env::remove_var("OLLAMA_API_KEY");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("OLLAMA_API_KEY"); }
 
     assert!(result.is_ok(), "expected validation to pass: {result:?}");
 }
@@ -2348,15 +2398,18 @@ async fn env_override_model_fallback() {
     let _env_guard = env_override_lock().await;
     let mut config = Config::default();
 
-    std::env::remove_var("rain_MODEL");
-    std::env::set_var("MODEL", "anthropic/claude-3.5-sonnet");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_MODEL"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("MODEL", "anthropic/claude-3.5-sonnet"); }
     config.apply_env_overrides();
     assert_eq!(
         config.default_model.as_deref(),
         Some("anthropic/claude-3.5-sonnet")
     );
 
-    std::env::remove_var("MODEL");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("MODEL"); }
 }
 
 #[test]
@@ -2364,11 +2417,13 @@ async fn env_override_workspace() {
     let _env_guard = env_override_lock().await;
     let mut config = Config::default();
 
-    std::env::set_var("rain_WORKSPACE", "/custom/workspace");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_WORKSPACE", "/custom/workspace"); }
     config.apply_env_overrides();
     assert_eq!(config.workspace_dir, PathBuf::from("/custom/workspace"));
 
-    std::env::remove_var("rain_WORKSPACE");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_WORKSPACE"); }
 }
 
 #[test]
@@ -2378,7 +2433,8 @@ async fn resolve_runtime_config_dirs_uses_env_workspace_first() {
     let default_workspace_dir = default_config_dir.join("workspace");
     let workspace_dir = default_config_dir.join("profile-a");
 
-    std::env::set_var("rain_WORKSPACE", &workspace_dir);
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_WORKSPACE", &workspace_dir); }
     let (config_dir, resolved_workspace_dir, source) =
         resolve_runtime_config_dirs(&default_config_dir, &default_workspace_dir)
             .await
@@ -2388,7 +2444,8 @@ async fn resolve_runtime_config_dirs_uses_env_workspace_first() {
     assert_eq!(config_dir, workspace_dir);
     assert_eq!(resolved_workspace_dir, workspace_dir.join("workspace"));
 
-    std::env::remove_var("rain_WORKSPACE");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_WORKSPACE"); }
     let _ = fs::remove_dir_all(default_config_dir).await;
 }
 
@@ -2409,8 +2466,10 @@ async fn resolve_runtime_config_dirs_uses_env_config_dir_first() {
         .await
         .unwrap();
 
-    std::env::set_var("rain_CONFIG_DIR", &explicit_config_dir);
-    std::env::remove_var("rain_WORKSPACE");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_CONFIG_DIR", &explicit_config_dir); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_WORKSPACE"); }
 
     let (config_dir, resolved_workspace_dir, source) =
         resolve_runtime_config_dirs(&default_config_dir, &default_workspace_dir)
@@ -2424,7 +2483,8 @@ async fn resolve_runtime_config_dirs_uses_env_config_dir_first() {
         explicit_config_dir.join("workspace")
     );
 
-    std::env::remove_var("rain_CONFIG_DIR");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_CONFIG_DIR"); }
     let _ = fs::remove_dir_all(default_config_dir).await;
 }
 
@@ -2436,7 +2496,8 @@ async fn resolve_runtime_config_dirs_uses_active_workspace_marker() {
     let marker_config_dir = default_config_dir.join("profiles").join("alpha");
     let state_path = default_config_dir.join(ACTIVE_WORKSPACE_STATE_FILE);
 
-    std::env::remove_var("rain_WORKSPACE");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_WORKSPACE"); }
     fs::create_dir_all(&default_config_dir).await.unwrap();
     let state = ActiveWorkspaceState {
         config_dir: marker_config_dir.to_string_lossy().into_owned(),
@@ -2463,7 +2524,8 @@ async fn resolve_runtime_config_dirs_falls_back_to_default_layout() {
     let default_config_dir = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
     let default_workspace_dir = default_config_dir.join("workspace");
 
-    std::env::remove_var("rain_WORKSPACE");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_WORKSPACE"); }
     let (config_dir, resolved_workspace_dir, source) =
         resolve_runtime_config_dirs(&default_config_dir, &default_workspace_dir)
             .await
@@ -2483,8 +2545,10 @@ async fn load_or_init_workspace_override_uses_workspace_root_for_config() {
     let workspace_dir = temp_home.join("profile-a");
 
     let original_home = std::env::var("HOME").ok();
-    std::env::set_var("HOME", &temp_home);
-    std::env::set_var("rain_WORKSPACE", &workspace_dir);
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("HOME", &temp_home); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_WORKSPACE", &workspace_dir); }
 
     let config = Box::pin(Config::load_or_init()).await.unwrap();
 
@@ -2492,11 +2556,14 @@ async fn load_or_init_workspace_override_uses_workspace_root_for_config() {
     assert_eq!(config.config_path, workspace_dir.join("config.toml"));
     assert!(workspace_dir.join("config.toml").exists());
 
-    std::env::remove_var("rain_WORKSPACE");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_WORKSPACE"); }
     if let Some(home) = original_home {
-        std::env::set_var("HOME", home);
+        // SAFETY: single-threaded test/init context
+        unsafe { std::env::set_var("HOME", home); }
     } else {
-        std::env::remove_var("HOME");
+        // SAFETY: single-threaded test/init context
+        unsafe { std::env::remove_var("HOME"); }
     }
     let _ = fs::remove_dir_all(temp_home).await;
 }
@@ -2509,8 +2576,10 @@ async fn load_or_init_workspace_suffix_uses_legacy_config_layout() {
     let legacy_config_path = temp_home.join(".R.A.I.N.").join("config.toml");
 
     let original_home = std::env::var("HOME").ok();
-    std::env::set_var("HOME", &temp_home);
-    std::env::set_var("rain_WORKSPACE", &workspace_dir);
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("HOME", &temp_home); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_WORKSPACE", &workspace_dir); }
 
     let config = Box::pin(Config::load_or_init()).await.unwrap();
 
@@ -2518,11 +2587,14 @@ async fn load_or_init_workspace_suffix_uses_legacy_config_layout() {
     assert_eq!(config.config_path, legacy_config_path);
     assert!(config.config_path.exists());
 
-    std::env::remove_var("rain_WORKSPACE");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_WORKSPACE"); }
     if let Some(home) = original_home {
-        std::env::set_var("HOME", home);
+        // SAFETY: single-threaded test/init context
+        unsafe { std::env::set_var("HOME", home); }
     } else {
-        std::env::remove_var("HOME");
+        // SAFETY: single-threaded test/init context
+        unsafe { std::env::remove_var("HOME"); }
     }
     let _ = fs::remove_dir_all(temp_home).await;
 }
@@ -2546,8 +2618,10 @@ default_model = "legacy-model"
     .unwrap();
 
     let original_home = std::env::var("HOME").ok();
-    std::env::set_var("HOME", &temp_home);
-    std::env::set_var("rain_WORKSPACE", &workspace_dir);
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("HOME", &temp_home); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_WORKSPACE", &workspace_dir); }
 
     let config = Box::pin(Config::load_or_init()).await.unwrap();
 
@@ -2555,11 +2629,14 @@ default_model = "legacy-model"
     assert_eq!(config.config_path, legacy_config_path);
     assert_eq!(config.default_model.as_deref(), Some("legacy-model"));
 
-    std::env::remove_var("rain_WORKSPACE");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_WORKSPACE"); }
     if let Some(home) = original_home {
-        std::env::set_var("HOME", home);
+        // SAFETY: single-threaded test/init context
+        unsafe { std::env::set_var("HOME", home); }
     } else {
-        std::env::remove_var("HOME");
+        // SAFETY: single-threaded test/init context
+        unsafe { std::env::remove_var("HOME"); }
     }
     let _ = fs::remove_dir_all(temp_home).await;
 }
@@ -2574,9 +2651,12 @@ async fn load_or_init_decrypts_feishu_channel_secrets() {
     fs::create_dir_all(&config_dir).await.unwrap();
 
     let original_home = std::env::var("HOME").ok();
-    std::env::set_var("HOME", &temp_home);
-    std::env::remove_var("rain_CONFIG_DIR");
-    std::env::remove_var("rain_WORKSPACE");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("HOME", &temp_home); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_CONFIG_DIR"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_WORKSPACE"); }
 
     let mut config = Config::default();
     config.config_path = config_path.clone();
@@ -2601,9 +2681,11 @@ async fn load_or_init_decrypts_feishu_channel_secrets() {
     assert_eq!(feishu.verification_token.as_deref(), Some("feishu-verify"));
 
     if let Some(home) = original_home {
-        std::env::set_var("HOME", home);
+        // SAFETY: single-threaded test/init context
+        unsafe { std::env::set_var("HOME", home); }
     } else {
-        std::env::remove_var("HOME");
+        // SAFETY: single-threaded test/init context
+        unsafe { std::env::remove_var("HOME"); }
     }
     let _ = fs::remove_dir_all(temp_home).await;
 }
@@ -2633,8 +2715,10 @@ async fn load_or_init_uses_persisted_active_workspace_marker() {
     // must override HOME here. The persist above already wrote to the
     // correct temp location, so no stale marker can leak.
     let original_home = std::env::var("HOME").ok();
-    std::env::set_var("HOME", &temp_home);
-    std::env::remove_var("rain_WORKSPACE");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("HOME", &temp_home); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_WORKSPACE"); }
 
     let config = Box::pin(Config::load_or_init()).await.unwrap();
 
@@ -2643,9 +2727,11 @@ async fn load_or_init_uses_persisted_active_workspace_marker() {
     assert_eq!(config.default_model.as_deref(), Some("persisted-profile"));
 
     if let Some(home) = original_home {
-        std::env::set_var("HOME", home);
+        // SAFETY: single-threaded test/init context
+        unsafe { std::env::set_var("HOME", home); }
     } else {
-        std::env::remove_var("HOME");
+        // SAFETY: single-threaded test/init context
+        unsafe { std::env::remove_var("HOME"); }
     }
     let _ = fs::remove_dir_all(temp_home).await;
 }
@@ -2672,19 +2758,24 @@ async fn load_or_init_env_workspace_override_takes_priority_over_marker() {
         .unwrap();
 
     let original_home = std::env::var("HOME").ok();
-    std::env::set_var("HOME", &temp_home);
-    std::env::set_var("rain_WORKSPACE", &env_workspace_dir);
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("HOME", &temp_home); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_WORKSPACE", &env_workspace_dir); }
 
     let config = Box::pin(Config::load_or_init()).await.unwrap();
 
     assert_eq!(config.workspace_dir, env_workspace_dir.join("workspace"));
     assert_eq!(config.config_path, env_workspace_dir.join("config.toml"));
 
-    std::env::remove_var("rain_WORKSPACE");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_WORKSPACE"); }
     if let Some(home) = original_home {
-        std::env::set_var("HOME", home);
+        // SAFETY: single-threaded test/init context
+        unsafe { std::env::set_var("HOME", home); }
     } else {
-        std::env::remove_var("HOME");
+        // SAFETY: single-threaded test/init context
+        unsafe { std::env::remove_var("HOME"); }
     }
     let _ = fs::remove_dir_all(temp_home).await;
 }
@@ -2730,8 +2821,10 @@ default_model = "persisted-profile"
     .unwrap();
 
     let original_home = std::env::var("HOME").ok();
-    std::env::set_var("HOME", &temp_home);
-    std::env::set_var("rain_WORKSPACE", &workspace_dir);
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("HOME", &temp_home); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_WORKSPACE", &workspace_dir); }
 
     let capture = SharedLogBuffer::default();
     let subscriber = tracing_subscriber::fmt()
@@ -2755,11 +2848,14 @@ default_model = "persisted-profile"
     assert!(logs.contains("initialized=true"), "{logs}");
     assert!(!logs.contains("initialized=false"), "{logs}");
 
-    std::env::remove_var("rain_WORKSPACE");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_WORKSPACE"); }
     if let Some(home) = original_home {
-        std::env::set_var("HOME", home);
+        // SAFETY: single-threaded test/init context
+        unsafe { std::env::set_var("HOME", home); }
     } else {
-        std::env::remove_var("HOME");
+        // SAFETY: single-threaded test/init context
+        unsafe { std::env::remove_var("HOME"); }
     }
     let _ = fs::remove_dir_all(temp_home).await;
 }
@@ -2794,11 +2890,13 @@ async fn env_override_empty_values_ignored() {
     let mut config = Config::default();
     let original_provider = config.default_provider.clone();
 
-    std::env::set_var("rain_PROVIDER", "");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_PROVIDER", ""); }
     config.apply_env_overrides();
     assert_eq!(config.default_provider, original_provider);
 
-    std::env::remove_var("rain_PROVIDER");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_PROVIDER"); }
 }
 
 #[test]
@@ -2807,11 +2905,13 @@ async fn env_override_gateway_port() {
     let mut config = Config::default();
     assert_eq!(config.gateway.port, 42617);
 
-    std::env::set_var("rain_GATEWAY_PORT", "8080");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_GATEWAY_PORT", "8080"); }
     config.apply_env_overrides();
     assert_eq!(config.gateway.port, 8080);
 
-    std::env::remove_var("rain_GATEWAY_PORT");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_GATEWAY_PORT"); }
 }
 
 #[test]
@@ -2819,12 +2919,15 @@ async fn env_override_port_fallback() {
     let _env_guard = env_override_lock().await;
     let mut config = Config::default();
 
-    std::env::remove_var("rain_GATEWAY_PORT");
-    std::env::set_var("PORT", "9000");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_GATEWAY_PORT"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("PORT", "9000"); }
     config.apply_env_overrides();
     assert_eq!(config.gateway.port, 9000);
 
-    std::env::remove_var("PORT");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("PORT"); }
 }
 
 #[test]
@@ -2833,11 +2936,13 @@ async fn env_override_gateway_host() {
     let mut config = Config::default();
     assert_eq!(config.gateway.host, "127.0.0.1");
 
-    std::env::set_var("rain_GATEWAY_HOST", "0.0.0.0");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_GATEWAY_HOST", "0.0.0.0"); }
     config.apply_env_overrides();
     assert_eq!(config.gateway.host, "0.0.0.0");
 
-    std::env::remove_var("rain_GATEWAY_HOST");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_GATEWAY_HOST"); }
 }
 
 #[test]
@@ -2845,12 +2950,15 @@ async fn env_override_host_fallback() {
     let _env_guard = env_override_lock().await;
     let mut config = Config::default();
 
-    std::env::remove_var("rain_GATEWAY_HOST");
-    std::env::set_var("HOST", "0.0.0.0");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_GATEWAY_HOST"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("HOST", "0.0.0.0"); }
     config.apply_env_overrides();
     assert_eq!(config.gateway.host, "0.0.0.0");
 
-    std::env::remove_var("HOST");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("HOST"); }
 }
 
 #[test]
@@ -2858,31 +2966,36 @@ async fn env_override_temperature() {
     let _env_guard = env_override_lock().await;
     let mut config = Config::default();
 
-    std::env::set_var("rain_TEMPERATURE", "0.5");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_TEMPERATURE", "0.5"); }
     config.apply_env_overrides();
     assert!((config.default_temperature - 0.5).abs() < f64::EPSILON);
 
-    std::env::remove_var("rain_TEMPERATURE");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_TEMPERATURE"); }
 }
 
 #[test]
 async fn env_override_temperature_out_of_range_ignored() {
     let _env_guard = env_override_lock().await;
     // Clean up any leftover env vars from other tests
-    std::env::remove_var("rain_TEMPERATURE");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_TEMPERATURE"); }
 
     let mut config = Config::default();
     let original_temp = config.default_temperature;
 
     // Temperature > 2.0 should be ignored
-    std::env::set_var("rain_TEMPERATURE", "3.0");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_TEMPERATURE", "3.0"); }
     config.apply_env_overrides();
     assert!(
         (config.default_temperature - original_temp).abs() < f64::EPSILON,
         "Temperature 3.0 should be ignored (out of range)"
     );
 
-    std::env::remove_var("rain_TEMPERATURE");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_TEMPERATURE"); }
 }
 
 #[test]
@@ -2891,15 +3004,18 @@ async fn env_override_reasoning_enabled() {
     let mut config = Config::default();
     assert_eq!(config.runtime.reasoning_enabled, None);
 
-    std::env::set_var("rain_REASONING_ENABLED", "false");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_REASONING_ENABLED", "false"); }
     config.apply_env_overrides();
     assert_eq!(config.runtime.reasoning_enabled, Some(false));
 
-    std::env::set_var("rain_REASONING_ENABLED", "true");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_REASONING_ENABLED", "true"); }
     config.apply_env_overrides();
     assert_eq!(config.runtime.reasoning_enabled, Some(true));
 
-    std::env::remove_var("rain_REASONING_ENABLED");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_REASONING_ENABLED"); }
 }
 
 #[test]
@@ -2908,11 +3024,13 @@ async fn env_override_reasoning_invalid_value_ignored() {
     let mut config = Config::default();
     config.runtime.reasoning_enabled = Some(false);
 
-    std::env::set_var("rain_REASONING_ENABLED", "maybe");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_REASONING_ENABLED", "maybe"); }
     config.apply_env_overrides();
     assert_eq!(config.runtime.reasoning_enabled, Some(false));
 
-    std::env::remove_var("rain_REASONING_ENABLED");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_REASONING_ENABLED"); }
 }
 
 #[test]
@@ -2921,11 +3039,13 @@ async fn env_override_reasoning_effort() {
     let mut config = Config::default();
     assert_eq!(config.runtime.reasoning_effort, None);
 
-    std::env::set_var("rain_REASONING_EFFORT", "HIGH");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_REASONING_EFFORT", "HIGH"); }
     config.apply_env_overrides();
     assert_eq!(config.runtime.reasoning_effort.as_deref(), Some("high"));
 
-    std::env::remove_var("rain_REASONING_EFFORT");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_REASONING_EFFORT"); }
 }
 
 #[test]
@@ -2933,11 +3053,13 @@ async fn env_override_reasoning_effort_legacy_codex_env() {
     let _env_guard = env_override_lock().await;
     let mut config = Config::default();
 
-    std::env::set_var("rain_CODEX_REASONING_EFFORT", "minimal");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_CODEX_REASONING_EFFORT", "minimal"); }
     config.apply_env_overrides();
     assert_eq!(config.runtime.reasoning_effort.as_deref(), Some("minimal"));
 
-    std::env::remove_var("rain_CODEX_REASONING_EFFORT");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_CODEX_REASONING_EFFORT"); }
 }
 
 #[test]
@@ -2946,11 +3068,13 @@ async fn env_override_invalid_port_ignored() {
     let mut config = Config::default();
     let original_port = config.gateway.port;
 
-    std::env::set_var("PORT", "not_a_number");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("PORT", "not_a_number"); }
     config.apply_env_overrides();
     assert_eq!(config.gateway.port, original_port);
 
-    std::env::remove_var("PORT");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("PORT"); }
 }
 
 #[test]
@@ -2958,11 +3082,16 @@ async fn env_override_web_search_config() {
     let _env_guard = env_override_lock().await;
     let mut config = Config::default();
 
-    std::env::set_var("WEB_SEARCH_ENABLED", "false");
-    std::env::set_var("WEB_SEARCH_PROVIDER", "brave");
-    std::env::set_var("WEB_SEARCH_MAX_RESULTS", "7");
-    std::env::set_var("WEB_SEARCH_TIMEOUT_SECS", "20");
-    std::env::set_var("BRAVE_API_KEY", "brave-test-key");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("WEB_SEARCH_ENABLED", "false"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("WEB_SEARCH_PROVIDER", "brave"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("WEB_SEARCH_MAX_RESULTS", "7"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("WEB_SEARCH_TIMEOUT_SECS", "20"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("BRAVE_API_KEY", "brave-test-key"); }
 
     config.apply_env_overrides();
 
@@ -2975,11 +3104,16 @@ async fn env_override_web_search_config() {
         Some("brave-test-key")
     );
 
-    std::env::remove_var("WEB_SEARCH_ENABLED");
-    std::env::remove_var("WEB_SEARCH_PROVIDER");
-    std::env::remove_var("WEB_SEARCH_MAX_RESULTS");
-    std::env::remove_var("WEB_SEARCH_TIMEOUT_SECS");
-    std::env::remove_var("BRAVE_API_KEY");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("WEB_SEARCH_ENABLED"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("WEB_SEARCH_PROVIDER"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("WEB_SEARCH_MAX_RESULTS"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("WEB_SEARCH_TIMEOUT_SECS"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("BRAVE_API_KEY"); }
 }
 
 #[test]
@@ -2989,16 +3123,20 @@ async fn env_override_web_search_invalid_values_ignored() {
     let original_max_results = config.web_search.max_results;
     let original_timeout = config.web_search.timeout_secs;
 
-    std::env::set_var("WEB_SEARCH_MAX_RESULTS", "99");
-    std::env::set_var("WEB_SEARCH_TIMEOUT_SECS", "0");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("WEB_SEARCH_MAX_RESULTS", "99"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("WEB_SEARCH_TIMEOUT_SECS", "0"); }
 
     config.apply_env_overrides();
 
     assert_eq!(config.web_search.max_results, original_max_results);
     assert_eq!(config.web_search.timeout_secs, original_timeout);
 
-    std::env::remove_var("WEB_SEARCH_MAX_RESULTS");
-    std::env::remove_var("WEB_SEARCH_TIMEOUT_SECS");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("WEB_SEARCH_MAX_RESULTS"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("WEB_SEARCH_TIMEOUT_SECS"); }
 }
 
 #[test]
@@ -3006,9 +3144,12 @@ async fn env_override_storage_provider_config() {
     let _env_guard = env_override_lock().await;
     let mut config = Config::default();
 
-    std::env::set_var("rain_STORAGE_PROVIDER", "postgres");
-    std::env::set_var("rain_STORAGE_DB_URL", "postgres://example/db");
-    std::env::set_var("rain_STORAGE_CONNECT_TIMEOUT_SECS", "15");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_STORAGE_PROVIDER", "postgres"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_STORAGE_DB_URL", "postgres://example/db"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_STORAGE_CONNECT_TIMEOUT_SECS", "15"); }
 
     config.apply_env_overrides();
 
@@ -3022,9 +3163,12 @@ async fn env_override_storage_provider_config() {
         Some(15)
     );
 
-    std::env::remove_var("rain_STORAGE_PROVIDER");
-    std::env::remove_var("rain_STORAGE_DB_URL");
-    std::env::remove_var("rain_STORAGE_CONNECT_TIMEOUT_SECS");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_STORAGE_PROVIDER"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_STORAGE_DB_URL"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::remove_var("rain_STORAGE_CONNECT_TIMEOUT_SECS"); }
 }
 
 #[test]
@@ -3049,10 +3193,14 @@ async fn env_override_proxy_scope_services() {
     clear_proxy_env_test_vars();
 
     let mut config = Config::default();
-    std::env::set_var("rain_PROXY_ENABLED", "true");
-    std::env::set_var("rain_HTTP_PROXY", "http://127.0.0.1:7890");
-    std::env::set_var("rain_PROXY_SERVICES", "provider.openai, tool.http_request");
-    std::env::set_var("rain_PROXY_SCOPE", "services");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_PROXY_ENABLED", "true"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_HTTP_PROXY", "http://127.0.0.1:7890"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_PROXY_SERVICES", "provider.openai, tool.http_request"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_PROXY_SCOPE", "services"); }
 
     config.apply_env_overrides();
 
@@ -3075,11 +3223,16 @@ async fn env_override_proxy_scope_environment_applies_process_env() {
     clear_proxy_env_test_vars();
 
     let mut config = Config::default();
-    std::env::set_var("rain_PROXY_ENABLED", "true");
-    std::env::set_var("rain_PROXY_SCOPE", "environment");
-    std::env::set_var("rain_HTTP_PROXY", "http://127.0.0.1:7890");
-    std::env::set_var("rain_HTTPS_PROXY", "http://127.0.0.1:7891");
-    std::env::set_var("rain_NO_PROXY", "localhost,127.0.0.1");
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_PROXY_ENABLED", "true"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_PROXY_SCOPE", "environment"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_HTTP_PROXY", "http://127.0.0.1:7890"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_HTTPS_PROXY", "http://127.0.0.1:7891"); }
+    // SAFETY: single-threaded test/init context
+    unsafe { std::env::set_var("rain_NO_PROXY", "localhost,127.0.0.1"); }
 
     config.apply_env_overrides();
 

@@ -1312,6 +1312,12 @@ pub fn handle_command(command: crate::SkillCommands, config: &crate::config::Con
             println!("  Security audit completed successfully.");
             Ok(())
         }
+        crate::SkillCommands::Test { name, verbose } => {
+            let label = name.as_deref().unwrap_or("all");
+            println!("Testing skills: {label} (verbose={verbose})");
+            // TODO: implement skill testing
+            Ok(())
+        }
         crate::SkillCommands::Remove { name } => {
             // Reject path traversal attempts
             if name.contains("..") || name.contains('/') || name.contains('\\') {
@@ -1365,7 +1371,8 @@ mod tests {
     impl EnvVarGuard {
         fn unset(key: &'static str) -> Self {
             let original = std::env::var(key).ok();
-            std::env::remove_var(key);
+            // SAFETY: single-threaded test/init context
+            unsafe { std::env::remove_var(key); }
             Self { key, original }
         }
     }
@@ -1373,9 +1380,11 @@ mod tests {
     impl Drop for EnvVarGuard {
         fn drop(&mut self) {
             if let Some(value) = &self.original {
-                std::env::set_var(self.key, value);
+                // SAFETY: single-threaded test/init context
+                unsafe { std::env::set_var(self.key, value); }
             } else {
-                std::env::remove_var(self.key);
+                // SAFETY: single-threaded test/init context
+                unsafe { std::env::remove_var(self.key); }
             }
         }
     }

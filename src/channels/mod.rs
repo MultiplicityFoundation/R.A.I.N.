@@ -32,6 +32,7 @@ pub mod linq;
 #[cfg(feature = "channel-matrix")]
 pub mod matrix;
 pub mod mattermost;
+pub mod media_pipeline;
 pub mod mochat;
 pub mod nextcloud_talk;
 #[cfg(feature = "channel-nostr")]
@@ -4903,6 +4904,7 @@ BTC is currently around $65,000 based on latest tool output."#
                 timestamp: 1,
                 thread_ts: None,
                 interruption_scope_id: None,
+                attachments: Vec::new(),
             },
             CancellationToken::new(),
         )
@@ -4987,6 +4989,7 @@ BTC is currently around $65,000 based on latest tool output."#
                 timestamp: 1,
                 thread_ts: None,
                 interruption_scope_id: None,
+                attachments: Vec::new(),
             },
             CancellationToken::new(),
         )
@@ -5085,6 +5088,7 @@ BTC is currently around $65,000 based on latest tool output."#
                 timestamp: 3,
                 thread_ts: None,
                 interruption_scope_id: None,
+                attachments: Vec::new(),
             },
             CancellationToken::new(),
         )
@@ -5168,6 +5172,7 @@ BTC is currently around $65,000 based on latest tool output."#
                 timestamp: 2,
                 thread_ts: None,
                 interruption_scope_id: None,
+                attachments: Vec::new(),
             },
             CancellationToken::new(),
         )
@@ -5261,6 +5266,7 @@ BTC is currently around $65,000 based on latest tool output."#
                 timestamp: 1,
                 thread_ts: None,
                 interruption_scope_id: None,
+                attachments: Vec::new(),
             },
             CancellationToken::new(),
         )
@@ -5375,6 +5381,7 @@ BTC is currently around $65,000 based on latest tool output."#
                 timestamp: 2,
                 thread_ts: None,
                 interruption_scope_id: None,
+                attachments: Vec::new(),
             },
             CancellationToken::new(),
         )
@@ -5470,6 +5477,7 @@ BTC is currently around $65,000 based on latest tool output."#
                 timestamp: 3,
                 thread_ts: None,
                 interruption_scope_id: None,
+                attachments: Vec::new(),
             },
             CancellationToken::new(),
         )
@@ -5580,6 +5588,7 @@ BTC is currently around $65,000 based on latest tool output."#
                 timestamp: 4,
                 thread_ts: None,
                 interruption_scope_id: None,
+                attachments: Vec::new(),
             },
             CancellationToken::new(),
         )
@@ -5675,6 +5684,7 @@ BTC is currently around $65,000 based on latest tool output."#
                 timestamp: 1,
                 thread_ts: None,
                 interruption_scope_id: None,
+                attachments: Vec::new(),
             },
             CancellationToken::new(),
         )
@@ -5760,6 +5770,7 @@ BTC is currently around $65,000 based on latest tool output."#
                 timestamp: 2,
                 thread_ts: None,
                 interruption_scope_id: None,
+                attachments: Vec::new(),
             },
             CancellationToken::new(),
         )
@@ -5860,6 +5871,9 @@ BTC is currently around $65,000 based on latest tool output."#
                 timestamp: "2026-02-20T00:00:00Z".to_string(),
                 session_id: None,
                 score: Some(0.9),
+                namespace: "default".into(),
+                importance: None,
+                superseded_by: None,
             }])
         }
 
@@ -5959,6 +5973,7 @@ BTC is currently around $65,000 based on latest tool output."#
             timestamp: 1,
             thread_ts: None,
             interruption_scope_id: None,
+            attachments: Vec::new(),
         })
         .await
         .unwrap();
@@ -5971,6 +5986,7 @@ BTC is currently around $65,000 based on latest tool output."#
             timestamp: 2,
             thread_ts: None,
             interruption_scope_id: None,
+            attachments: Vec::new(),
         })
         .await
         .unwrap();
@@ -6065,6 +6081,7 @@ BTC is currently around $65,000 based on latest tool output."#
                 timestamp: 1,
                 thread_ts: None,
                 interruption_scope_id: None,
+                attachments: Vec::new(),
             })
             .await
             .unwrap();
@@ -6078,6 +6095,7 @@ BTC is currently around $65,000 based on latest tool output."#
                 timestamp: 2,
                 thread_ts: None,
                 interruption_scope_id: None,
+                attachments: Vec::new(),
             })
             .await
             .unwrap();
@@ -6185,6 +6203,7 @@ BTC is currently around $65,000 based on latest tool output."#
                 timestamp: 1,
                 thread_ts: Some("1741234567.100001".to_string()),
                 interruption_scope_id: Some("1741234567.100001".to_string()),
+                attachments: Vec::new(),
             })
             .await
             .unwrap();
@@ -6198,6 +6217,7 @@ BTC is currently around $65,000 based on latest tool output."#
                 timestamp: 2,
                 thread_ts: Some("1741234567.100001".to_string()),
                 interruption_scope_id: Some("1741234567.100001".to_string()),
+                attachments: Vec::new(),
             })
             .await
             .unwrap();
@@ -6302,6 +6322,7 @@ BTC is currently around $65,000 based on latest tool output."#
                 timestamp: 1,
                 thread_ts: None,
                 interruption_scope_id: None,
+                attachments: Vec::new(),
             })
             .await
             .unwrap();
@@ -6315,6 +6336,7 @@ BTC is currently around $65,000 based on latest tool output."#
                 timestamp: 2,
                 thread_ts: None,
                 interruption_scope_id: None,
+                attachments: Vec::new(),
             })
             .await
             .unwrap();
@@ -6401,6 +6423,7 @@ BTC is currently around $65,000 based on latest tool output."#
                 timestamp: 1,
                 thread_ts: None,
                 interruption_scope_id: None,
+                attachments: Vec::new(),
             },
             CancellationToken::new(),
         )
@@ -6484,6 +6507,7 @@ BTC is currently around $65,000 based on latest tool output."#
                 timestamp: 1,
                 thread_ts: None,
                 interruption_scope_id: None,
+                attachments: Vec::new(),
             },
             CancellationToken::new(),
         )
@@ -7009,6 +7033,7 @@ BTC is currently around $65,000 based on latest tool output."#
             timestamp: 1,
             thread_ts: None,
             interruption_scope_id: None,
+            attachments: Vec::new(),
         };
 
         assert_eq!(conversation_memory_key(&msg), "slack_U123_msg_abc123");
@@ -7025,6 +7050,7 @@ BTC is currently around $65,000 based on latest tool output."#
             timestamp: 1,
             thread_ts: Some("1741234567.123456".into()),
             interruption_scope_id: None,
+            attachments: Vec::new(),
         };
 
         assert_eq!(
@@ -7044,6 +7070,7 @@ BTC is currently around $65,000 based on latest tool output."#
             timestamp: 1,
             thread_ts: None,
             interruption_scope_id: None,
+            attachments: Vec::new(),
         };
 
         assert_eq!(followup_thread_id(&msg).as_deref(), Some("msg_abc123"));
@@ -7060,6 +7087,7 @@ BTC is currently around $65,000 based on latest tool output."#
             timestamp: 1,
             thread_ts: None,
             interruption_scope_id: None,
+            attachments: Vec::new(),
         };
         let msg2 = traits::ChannelMessage {
             id: "msg_2".into(),
@@ -7070,6 +7098,7 @@ BTC is currently around $65,000 based on latest tool output."#
             timestamp: 2,
             thread_ts: None,
             interruption_scope_id: None,
+            attachments: Vec::new(),
         };
 
         assert_ne!(
@@ -7092,6 +7121,7 @@ BTC is currently around $65,000 based on latest tool output."#
             timestamp: 1,
             thread_ts: None,
             interruption_scope_id: None,
+            attachments: Vec::new(),
         };
         let msg2 = traits::ChannelMessage {
             id: "msg_2".into(),
@@ -7102,6 +7132,7 @@ BTC is currently around $65,000 based on latest tool output."#
             timestamp: 2,
             thread_ts: None,
             interruption_scope_id: None,
+            attachments: Vec::new(),
         };
 
         mem.store(
@@ -7253,6 +7284,7 @@ BTC is currently around $65,000 based on latest tool output."#
                 timestamp: 1,
                 thread_ts: None,
                 interruption_scope_id: None,
+                attachments: Vec::new(),
             },
             CancellationToken::new(),
         )
@@ -7269,6 +7301,7 @@ BTC is currently around $65,000 based on latest tool output."#
                 timestamp: 2,
                 thread_ts: None,
                 interruption_scope_id: None,
+                attachments: Vec::new(),
             },
             CancellationToken::new(),
         )
@@ -7387,6 +7420,7 @@ BTC is currently around $65,000 based on latest tool output."#
                 timestamp: 1,
                 thread_ts: None,
                 interruption_scope_id: None,
+                attachments: Vec::new(),
             },
             CancellationToken::new(),
         )
@@ -7419,6 +7453,7 @@ BTC is currently around $65,000 based on latest tool output."#
                 timestamp: 2,
                 thread_ts: None,
                 interruption_scope_id: None,
+                attachments: Vec::new(),
             },
             CancellationToken::new(),
         )
@@ -7457,6 +7492,7 @@ BTC is currently around $65,000 based on latest tool output."#
                 timestamp: 3,
                 thread_ts: None,
                 interruption_scope_id: None,
+                attachments: Vec::new(),
             },
             CancellationToken::new(),
         )
@@ -7561,6 +7597,7 @@ BTC is currently around $65,000 based on latest tool output."#
                 timestamp: 1,
                 thread_ts: None,
                 interruption_scope_id: None,
+                attachments: Vec::new(),
             },
             CancellationToken::new(),
         )
@@ -7672,6 +7709,7 @@ BTC is currently around $65,000 based on latest tool output."#
                 timestamp: 1,
                 thread_ts: None,
                 interruption_scope_id: None,
+                attachments: Vec::new(),
             },
             CancellationToken::new(),
         )
@@ -8212,6 +8250,7 @@ Mon Feb 20
                 timestamp: 1,
                 thread_ts: None,
                 interruption_scope_id: None,
+                attachments: Vec::new(),
             },
             CancellationToken::new(),
         )
@@ -8301,6 +8340,7 @@ Mon Feb 20
                 timestamp: 1,
                 thread_ts: None,
                 interruption_scope_id: None,
+                attachments: Vec::new(),
             },
             CancellationToken::new(),
         )
@@ -8317,6 +8357,7 @@ Mon Feb 20
                 timestamp: 2,
                 thread_ts: None,
                 interruption_scope_id: None,
+                attachments: Vec::new(),
             },
             CancellationToken::new(),
         )
@@ -8466,6 +8507,7 @@ Mon Feb 20
                 timestamp: 1,
                 thread_ts: None,
                 interruption_scope_id: None,
+                attachments: Vec::new(),
             },
             CancellationToken::new(),
         )
@@ -8580,6 +8622,7 @@ Mon Feb 20
                 timestamp: 1,
                 thread_ts: None,
                 interruption_scope_id: None,
+                attachments: Vec::new(),
             },
             CancellationToken::new(),
         )
@@ -8686,6 +8729,7 @@ Mon Feb 20
                 timestamp: 1,
                 thread_ts: None,
                 interruption_scope_id: None,
+                attachments: Vec::new(),
             },
             CancellationToken::new(),
         )
@@ -8812,6 +8856,7 @@ Mon Feb 20
                 timestamp: 1,
                 thread_ts: None,
                 interruption_scope_id: None,
+                attachments: Vec::new(),
             },
             CancellationToken::new(),
         )
@@ -8969,6 +9014,7 @@ Mon Feb 20
             timestamp: 0,
             thread_ts: None,
             interruption_scope_id: None,
+            attachments: Vec::new(),
         };
         assert_eq!(interruption_scope_key(&msg), "matrix_room_alice");
     }
@@ -8984,6 +9030,7 @@ Mon Feb 20
             timestamp: 0,
             thread_ts: Some("$thread1".into()),
             interruption_scope_id: Some("$thread1".into()),
+            attachments: Vec::new(),
         };
         assert_eq!(interruption_scope_key(&msg), "matrix_room_alice_$thread1");
     }
@@ -9000,6 +9047,7 @@ Mon Feb 20
             timestamp: 0,
             thread_ts: Some("1234567890.000100".into()), // Slack top-level fallback
             interruption_scope_id: None,                 // but NOT a thread reply
+            attachments: Vec::new(),
         };
         assert_eq!(interruption_scope_key(&msg), "slack_C123_alice");
     }
@@ -9078,6 +9126,7 @@ Mon Feb 20
                 timestamp: 1,
                 thread_ts: Some("1741234567.100001".to_string()),
                 interruption_scope_id: Some("1741234567.100001".to_string()),
+                attachments: Vec::new(),
             })
             .await
             .unwrap();
@@ -9091,6 +9140,7 @@ Mon Feb 20
                 timestamp: 2,
                 thread_ts: Some("1741234567.200002".to_string()),
                 interruption_scope_id: Some("1741234567.200002".to_string()),
+                attachments: Vec::new(),
             })
             .await
             .unwrap();
