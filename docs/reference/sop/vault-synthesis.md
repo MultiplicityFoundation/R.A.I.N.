@@ -33,47 +33,47 @@ This Standard Operating Procedure defines the rigid workflow Elena follows to sy
 
 ### Phase 2 — Structural Injection
 
-3. **Read target document(s) in full**
+1. **Read target document(s) in full**
    - Use `file_read` to retrieve complete content
    - Identify all existing foundational physics equations (markers: LaTeX `$...$`, `$$...$$`, or markdown equations)
    - Locate optimal insertion points (logical sections, not mid-equation)
 
-4. **Draft new content**
+2. **Draft new content**
    - Write new findings in the same voice and format as existing content
    - **Never delete or modify existing physics equations**
    - Add new data only as additional paragraphs, subsections, or appended notes
    - Use wikilink syntax `[[Document Name]]` for all cross-references
 
-5. **Verify bidirectional links**
+3. **Verify bidirectional links**
    - For each forward wikilink added, confirm the target document links back
    - If reciprocal link is missing, add `[[This Document]]` to the target using `file_edit`
 
 ### Phase 3 — Write-Back with Collision Protection
 
-6. **Acquire file lock**
+1. **Acquire file lock**
    - Before writing, check for lock file: `.vault.lock/{filename}.lock`
    - If lock exists, wait up to 30 seconds before retrying
    - If lock persists, log a warning and proceed with best-effort (see Phase 4)
 
-7. **Write content**
+2. **Write content**
    - Use `file_edit` for existing documents (append/inject only)
    - Use `file_write` only for new documents
    - After successful write, remove lock file
 
 ### Phase 4 — Post-Synthesis Audit
 
-8. **Verify vault consistency**
+1. **Verify vault consistency**
    - Confirm all new wikilinks resolve to existing documents
    - Confirm no foundational equations were modified or deleted
    - Run a quick `glob_search` to ensure no orphaned lock files remain
 
-9. **Generate commit message**
+2. **Generate commit message**
    - Format: `vault: synthesize {document} after Resonance Validation — {brief description}`
    - Example: `vault: synthesize Coherence Depth after Resonance Validation — add TRIBE v2 friction telemetry`
 
-10. **Git operations** (if authorized)
-    - Stage modified files: `git add papers/*.md`
-    - Commit with generated message
+3. **Git operations** (if authorized)
+   - Stage modified files: `git add papers/*.md`
+   - Commit with generated message
 
 ---
 
