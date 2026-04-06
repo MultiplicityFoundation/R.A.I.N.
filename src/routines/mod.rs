@@ -7,8 +7,6 @@
 pub mod engine;
 pub mod event_matcher;
 
-pub use engine::RoutinesEngine;
-
 use serde::{Deserialize, Serialize};
 
 /// A single automation routine.

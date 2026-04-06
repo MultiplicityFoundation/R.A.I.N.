@@ -3,10 +3,11 @@
 use serde::{Deserialize, Serialize};
 
 /// Trust level assigned to an identity or session.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TrustLevel {
     /// No trust — all actions require explicit approval.
+    #[default]
     None,
     /// Basic trust — low-risk read-only actions are auto-approved.
     Low,
@@ -16,12 +17,6 @@ pub enum TrustLevel {
     High,
     /// Full trust — all actions are auto-approved (owner/admin only).
     Full,
-}
-
-impl Default for TrustLevel {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 impl std::fmt::Display for TrustLevel {

@@ -1216,7 +1216,9 @@ pub fn handle_command(command: crate::SkillCommands, config: &crate::config::Con
                 println!("No skills installed.");
                 println!();
                 println!("  Create one: mkdir -p ~/.R.A.I.N./workspace/skills/my-skill");
-                println!("              echo '# My Skill' > ~/.R.A.I.N./workspace/skills/my-skill/SKILL.md");
+                println!(
+                    "              echo '# My Skill' > ~/.R.A.I.N./workspace/skills/my-skill/SKILL.md"
+                );
                 println!();
                 println!("  Or install: rain skills install <source>");
             } else {
@@ -1372,7 +1374,9 @@ mod tests {
         fn unset(key: &'static str) -> Self {
             let original = std::env::var(key).ok();
             // SAFETY: single-threaded test/init context
-            unsafe { std::env::remove_var(key); }
+            unsafe {
+                std::env::remove_var(key);
+            }
             Self { key, original }
         }
     }
@@ -1381,10 +1385,14 @@ mod tests {
         fn drop(&mut self) {
             if let Some(value) = &self.original {
                 // SAFETY: single-threaded test/init context
-                unsafe { std::env::set_var(self.key, value); }
+                unsafe {
+                    std::env::set_var(self.key, value);
+                }
             } else {
                 // SAFETY: single-threaded test/init context
-                unsafe { std::env::remove_var(self.key); }
+                unsafe {
+                    std::env::remove_var(self.key);
+                }
             }
         }
     }

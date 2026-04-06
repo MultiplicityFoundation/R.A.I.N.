@@ -4,5 +4,3 @@
 //! subsystem to gate autonomous actions based on accumulated trust signals.
 
 pub mod types;
-
-pub use types::*;

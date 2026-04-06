@@ -244,7 +244,7 @@ landlock = { version = "0.4", optional = true }
 libc = "0.2"
 
 [features]
-default = ["observability-prometheus", "skill-creation"]
+default = ["stable-core"]
 # Semantic alias for the supported core build. Intentionally empty so
 # integration-heavy features remain opt-in.
 stable-core = []

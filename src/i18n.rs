@@ -263,13 +263,19 @@ shell = "Execute a shell command"
         let saved_lang = std::env::var("LANG").ok();
 
         // SAFETY: single-threaded test/init context
-        unsafe { std::env::set_var("rain_LOCALE", "ja-JP"); }
+        unsafe {
+            std::env::set_var("rain_LOCALE", "ja-JP");
+        }
         assert_eq!(detect_locale(), "ja-JP");
 
         // SAFETY: single-threaded test/init context
-        unsafe { std::env::remove_var("rain_LOCALE"); }
+        unsafe {
+            std::env::remove_var("rain_LOCALE");
+        }
         // SAFETY: single-threaded test/init context
-        unsafe { std::env::set_var("LANG", "zh_CN.UTF-8"); }
+        unsafe {
+            std::env::set_var("LANG", "zh_CN.UTF-8");
+        }
         assert_eq!(detect_locale(), "zh-CN");
 
         // Restore.

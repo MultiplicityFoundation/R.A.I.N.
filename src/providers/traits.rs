@@ -1,6 +1,6 @@
 use crate::tools::ToolSpec;
 use async_trait::async_trait;
-use futures_util::{stream, StreamExt};
+use futures_util::{StreamExt, stream};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
@@ -175,7 +175,8 @@ impl StreamChunk {
 
     /// Estimate tokens (rough approximation: ~4 chars per token).
     pub fn with_token_estimate(mut self) -> Self {
-        self.token_count = self.delta.len().div_ceil(4);
+        let text_len = self.delta.len() + self.reasoning.as_ref().map_or(0, |r| r.len());
+        self.token_count = text_len.div_ceil(4);
         self
     }
 }
@@ -201,7 +202,7 @@ pub enum StreamEvent {
 impl StreamEvent {
     /// Convert a `StreamChunk` into a `StreamEvent`.
     pub(crate) fn from_chunk(chunk: StreamChunk) -> Self {
-        if chunk.is_final {
+        if chunk.is_final && chunk.delta.is_empty() && chunk.reasoning.is_none() {
             Self::Final
         } else {
             Self::TextDelta(chunk)

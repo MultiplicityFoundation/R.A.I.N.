@@ -263,6 +263,7 @@ mod tests {
             timestamp: 999,
             thread_ts: None,
             interruption_scope_id: None,
+            attachments: Vec::new(),
         };
 
         let cloned = message.clone();
@@ -281,24 +282,30 @@ mod tests {
         assert!(channel.health_check().await);
         assert!(channel.start_typing("bob").await.is_ok());
         assert!(channel.stop_typing("bob").await.is_ok());
-        assert!(channel
-            .send(&SendMessage::new("hello", "bob"))
-            .await
-            .is_ok());
+        assert!(
+            channel
+                .send(&SendMessage::new("hello", "bob"))
+                .await
+                .is_ok()
+        );
     }
 
     #[tokio::test]
     async fn default_reaction_methods_return_success() {
         let channel = DummyChannel;
 
-        assert!(channel
-            .add_reaction("chan_1", "msg_1", "\u{1F440}")
-            .await
-            .is_ok());
-        assert!(channel
-            .remove_reaction("chan_1", "msg_1", "\u{1F440}")
-            .await
-            .is_ok());
+        assert!(
+            channel
+                .add_reaction("chan_1", "msg_1", "\u{1F440}")
+                .await
+                .is_ok()
+        );
+        assert!(
+            channel
+                .remove_reaction("chan_1", "msg_1", "\u{1F440}")
+                .await
+                .is_ok()
+        );
     }
 
     #[tokio::test]
@@ -306,16 +313,20 @@ mod tests {
         let channel = DummyChannel;
 
         assert!(!channel.supports_draft_updates());
-        assert!(channel
-            .send_draft(&SendMessage::new("draft", "bob"))
-            .await
-            .unwrap()
-            .is_none());
+        assert!(
+            channel
+                .send_draft(&SendMessage::new("draft", "bob"))
+                .await
+                .unwrap()
+                .is_none()
+        );
         assert!(channel.update_draft("bob", "msg_1", "text").await.is_ok());
-        assert!(channel
-            .finalize_draft("bob", "msg_1", "final text")
-            .await
-            .is_ok());
+        assert!(
+            channel
+                .finalize_draft("bob", "msg_1", "final text")
+                .await
+                .is_ok()
+        );
         assert!(channel.cancel_draft("bob", "msg_1").await.is_ok());
     }
 

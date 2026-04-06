@@ -34,7 +34,11 @@ impl RoutinesEngine {
                 continue;
             }
 
-            if !self.matches(&routine.event.strategy, &routine.event.pattern, &event.payload) {
+            if !self.matches(
+                &routine.event.strategy,
+                &routine.event.pattern,
+                &event.payload,
+            ) {
                 continue;
             }
 
@@ -83,7 +87,10 @@ fn glob_match(pattern: &str, text: &str) -> bool {
                     return true;
                 }
                 while t.peek().is_some() {
-                    if glob_match(&p.clone().collect::<String>(), &t.clone().collect::<String>()) {
+                    if glob_match(
+                        &p.clone().collect::<String>(),
+                        &t.clone().collect::<String>(),
+                    ) {
                         return true;
                     }
                     t.next();

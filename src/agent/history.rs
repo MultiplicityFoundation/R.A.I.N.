@@ -1,6 +1,6 @@
 use crate::memory::{self, Memory};
 use crate::providers::{ChatMessage, Provider};
-use crate::security::{sanitize_for_model_input, ModelInputSource};
+use crate::security::{ModelInputSource, sanitize_for_model_input};
 use crate::util::truncate_with_ellipsis;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};

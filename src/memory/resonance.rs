@@ -4,7 +4,7 @@ use super::vector;
 use async_trait::async_trait;
 use chrono::Local;
 use parking_lot::Mutex;
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -47,11 +47,7 @@ impl ScalarField {
             return 0.0;
         }
         let coupling = overlap / denom;
-        if coupling.is_finite() {
-            coupling
-        } else {
-            0.0
-        }
+        if coupling.is_finite() { coupling } else { 0.0 }
     }
 }
 

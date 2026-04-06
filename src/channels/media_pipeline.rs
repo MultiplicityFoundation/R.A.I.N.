@@ -95,6 +95,7 @@ impl MediaAttachment {
 }
 
 /// Media pipeline configuration.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MediaPipelineConfig {
     /// Whether the media pipeline is enabled.
@@ -129,7 +130,11 @@ impl Default for MediaPipelineConfig {
 /// Enrich a message with media annotations.
 ///
 /// Returns the original text prepended with annotations for each attachment.
-pub fn enrich_message(text: &str, attachments: &[MediaAttachment], vision_available: bool) -> String {
+pub fn enrich_message(
+    text: &str,
+    attachments: &[MediaAttachment],
+    vision_available: bool,
+) -> String {
     if attachments.is_empty() {
         return text.to_string();
     }
@@ -167,10 +172,22 @@ mod tests {
 
     #[test]
     fn media_kind_detect_from_mime() {
-        assert_eq!(MediaKind::detect(Some("audio/ogg"), "file"), MediaKind::Audio);
-        assert_eq!(MediaKind::detect(Some("image/png"), "file"), MediaKind::Image);
-        assert_eq!(MediaKind::detect(Some("video/mp4"), "file"), MediaKind::Video);
-        assert_eq!(MediaKind::detect(Some("text/plain"), "file"), MediaKind::Unknown);
+        assert_eq!(
+            MediaKind::detect(Some("audio/ogg"), "file"),
+            MediaKind::Audio
+        );
+        assert_eq!(
+            MediaKind::detect(Some("image/png"), "file"),
+            MediaKind::Image
+        );
+        assert_eq!(
+            MediaKind::detect(Some("video/mp4"), "file"),
+            MediaKind::Video
+        );
+        assert_eq!(
+            MediaKind::detect(Some("text/plain"), "file"),
+            MediaKind::Unknown
+        );
     }
 
     #[test]

@@ -12,7 +12,7 @@ use anyhow::Result;
 ///
 /// Returns `Ok(())` on successful completion, or an error if the user
 /// cancels or the terminal is not interactive.
-pub async fn run_tui_onboarding() -> Result<()> {
+pub fn run_tui_onboarding() -> Result<()> {
     // TUI onboarding is a progressive enhancement — fall back to CLI wizard
     // if the terminal doesn't support the required capabilities.
     if !std::io::IsTerminal::is_terminal(&std::io::stdout()) {

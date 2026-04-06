@@ -78,6 +78,8 @@ mod tests {
                 recipient: "user".into(),
                 subject: None,
                 thread_ts: None,
+                cancellation_token: None,
+                attachments: Vec::new(),
             })
             .await;
         assert!(result.is_ok());
@@ -92,6 +94,8 @@ mod tests {
                 recipient: String::new(),
                 subject: None,
                 thread_ts: None,
+                cancellation_token: None,
+                attachments: Vec::new(),
             })
             .await;
         assert!(result.is_ok());

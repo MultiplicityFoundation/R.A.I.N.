@@ -102,10 +102,7 @@ pub enum ObserverEvent {
         commit_sha: String,
     },
     /// A deployment failed.
-    DeploymentFailed {
-        deploy_id: String,
-        reason: String,
-    },
+    DeploymentFailed { deploy_id: String, reason: String },
     /// Recovery from a failed deployment completed.
     RecoveryCompleted { deploy_id: String },
 }

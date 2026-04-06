@@ -36,7 +36,7 @@ use async_trait::async_trait;
 use std::path::PathBuf;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
-use tokio::time::{timeout, Duration};
+use tokio::time::{Duration, timeout};
 
 /// Environment variable for overriding the path to the `claude` binary.
 pub const CLAUDE_CODE_PATH_ENV: &str = "CLAUDE_CODE_PATH";
@@ -308,7 +308,9 @@ mod tests {
         let _guard = env_lock();
         let orig = std::env::var(CLAUDE_CODE_PATH_ENV).ok();
         // SAFETY: single-threaded test/init context
-        unsafe { std::env::set_var(CLAUDE_CODE_PATH_ENV, "/usr/local/bin/claude"); }
+        unsafe {
+            std::env::set_var(CLAUDE_CODE_PATH_ENV, "/usr/local/bin/claude");
+        }
         let provider = ClaudeCodeProvider::new();
         assert_eq!(provider.binary_path, PathBuf::from("/usr/local/bin/claude"));
         match orig {
@@ -322,12 +324,16 @@ mod tests {
         let _guard = env_lock();
         let orig = std::env::var(CLAUDE_CODE_PATH_ENV).ok();
         // SAFETY: single-threaded test/init context
-        unsafe { std::env::remove_var(CLAUDE_CODE_PATH_ENV); }
+        unsafe {
+            std::env::remove_var(CLAUDE_CODE_PATH_ENV);
+        }
         let provider = ClaudeCodeProvider::new();
         assert_eq!(provider.binary_path, PathBuf::from("claude"));
         if let Some(v) = orig {
             // SAFETY: single-threaded test/init context
-            unsafe { std::env::set_var(CLAUDE_CODE_PATH_ENV, v); }
+            unsafe {
+                std::env::set_var(CLAUDE_CODE_PATH_ENV, v);
+            }
         }
     }
 
@@ -336,7 +342,9 @@ mod tests {
         let _guard = env_lock();
         let orig = std::env::var(CLAUDE_CODE_PATH_ENV).ok();
         // SAFETY: single-threaded test/init context
-        unsafe { std::env::set_var(CLAUDE_CODE_PATH_ENV, "   "); }
+        unsafe {
+            std::env::set_var(CLAUDE_CODE_PATH_ENV, "   ");
+        }
         let provider = ClaudeCodeProvider::new();
         assert_eq!(provider.binary_path, PathBuf::from("claude"));
         match orig {

@@ -20,7 +20,7 @@ use tokio::net::TcpListener;
 
 // Re-export for external use (used by main.rs)
 #[allow(unused_imports)]
-pub use crate::auth::oauth_common::{generate_pkce_state, PkceState};
+pub use crate::auth::oauth_common::{PkceState, generate_pkce_state};
 
 /// Get Gemini OAuth client ID from environment.
 /// Required: set GEMINI_OAUTH_CLIENT_ID environment variable.
@@ -533,7 +533,9 @@ mod tests {
         fn set(key: &'static str, value: &str) -> Self {
             let original = std::env::var(key).ok();
             // SAFETY: single-threaded test/init context
-            unsafe { std::env::set_var(key, value); }
+            unsafe {
+                std::env::set_var(key, value);
+            }
             Self { key, original }
         }
     }
@@ -542,10 +544,14 @@ mod tests {
         fn drop(&mut self) {
             if let Some(ref original) = self.original {
                 // SAFETY: single-threaded test/init context
-                unsafe { std::env::set_var(self.key, original); }
+                unsafe {
+                    std::env::set_var(self.key, original);
+                }
             } else {
                 // SAFETY: single-threaded test/init context
-                unsafe { std::env::remove_var(self.key); }
+                unsafe {
+                    std::env::remove_var(self.key);
+                }
             }
         }
     }

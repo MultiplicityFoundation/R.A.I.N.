@@ -22,8 +22,8 @@ pub mod vector;
 
 #[allow(unused_imports)]
 pub use backend::{
-    classify_memory_backend, default_memory_backend_key, memory_backend_profile,
-    selectable_memory_backends, MemoryBackendKind, MemoryBackendProfile,
+    MemoryBackendKind, MemoryBackendProfile, classify_memory_backend, default_memory_backend_key,
+    memory_backend_profile, selectable_memory_backends,
 };
 pub use lucid::LucidMemory;
 pub use markdown::MarkdownMemory;
@@ -750,7 +750,9 @@ mod tests {
         // COHERE_API_KEY is almost certainly unset in normal dev environments.
         let prev = std::env::var("COHERE_API_KEY").ok();
         // SAFETY: single-threaded test/init context
-        unsafe { std::env::set_var("COHERE_API_KEY", "cohere-from-env"); }
+        unsafe {
+            std::env::set_var("COHERE_API_KEY", "cohere-from-env");
+        }
 
         let cfg = MemoryConfig {
             embedding_provider: "cohere".into(),

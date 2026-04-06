@@ -33,7 +33,7 @@
     clippy::large_futures,
     dead_code
 )]
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use dialoguer::Password;
 use serde::{Deserialize, Serialize};
@@ -41,7 +41,7 @@ use std::io::{IsTerminal, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::{info, warn};
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt};
 
 use crate::tools::Tool;
 
@@ -806,7 +806,9 @@ async fn main() -> Result<()> {
             bail!("--config-dir cannot be empty");
         }
         // SAFETY: single-threaded test/init context
-        unsafe { std::env::set_var("rain_CONFIG_DIR", config_dir); }
+        unsafe {
+            std::env::set_var("rain_CONFIG_DIR", config_dir);
+        }
     }
 
     // Completions must remain stdout-only and should not load config or initialize logging.

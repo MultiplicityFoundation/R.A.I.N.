@@ -112,7 +112,10 @@ impl Observer for LogObserver {
             ObserverEvent::DeploymentStarted { deploy_id } => {
                 info!(deploy_id = %deploy_id, "deployment.started");
             }
-            ObserverEvent::DeploymentCompleted { deploy_id, commit_sha } => {
+            ObserverEvent::DeploymentCompleted {
+                deploy_id,
+                commit_sha,
+            } => {
                 info!(deploy_id = %deploy_id, commit_sha = %commit_sha, "deployment.completed");
             }
             ObserverEvent::DeploymentFailed { deploy_id, reason } => {

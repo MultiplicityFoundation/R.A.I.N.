@@ -3,8 +3,6 @@
 //! Uses ratatui + crossterm for rich terminal interfaces. The TUI onboarding
 //! flow is an alternative to the CLI-prompt-based `onboard` wizard.
 
-mod onboarding;
+pub mod onboarding;
 mod theme;
 mod widgets;
-
-pub use onboarding::run_tui_onboarding;

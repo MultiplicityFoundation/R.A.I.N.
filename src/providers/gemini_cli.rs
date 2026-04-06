@@ -39,7 +39,7 @@ use async_trait::async_trait;
 use std::path::PathBuf;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
-use tokio::time::{timeout, Duration};
+use tokio::time::{Duration, timeout};
 
 /// Environment variable for overriding the path to the `gemini` binary.
 pub const GEMINI_CLI_PATH_ENV: &str = "GEMINI_CLI_PATH";
@@ -248,7 +248,9 @@ mod tests {
         let _guard = env_lock();
         let orig = std::env::var(GEMINI_CLI_PATH_ENV).ok();
         // SAFETY: single-threaded test/init context
-        unsafe { std::env::set_var(GEMINI_CLI_PATH_ENV, "/usr/local/bin/gemini"); }
+        unsafe {
+            std::env::set_var(GEMINI_CLI_PATH_ENV, "/usr/local/bin/gemini");
+        }
         let provider = GeminiCliProvider::new();
         assert_eq!(provider.binary_path, PathBuf::from("/usr/local/bin/gemini"));
         match orig {
@@ -262,12 +264,16 @@ mod tests {
         let _guard = env_lock();
         let orig = std::env::var(GEMINI_CLI_PATH_ENV).ok();
         // SAFETY: single-threaded test/init context
-        unsafe { std::env::remove_var(GEMINI_CLI_PATH_ENV); }
+        unsafe {
+            std::env::remove_var(GEMINI_CLI_PATH_ENV);
+        }
         let provider = GeminiCliProvider::new();
         assert_eq!(provider.binary_path, PathBuf::from("gemini"));
         if let Some(v) = orig {
             // SAFETY: single-threaded test/init context
-            unsafe { std::env::set_var(GEMINI_CLI_PATH_ENV, v); }
+            unsafe {
+                std::env::set_var(GEMINI_CLI_PATH_ENV, v);
+            }
         }
     }
 
@@ -276,7 +282,9 @@ mod tests {
         let _guard = env_lock();
         let orig = std::env::var(GEMINI_CLI_PATH_ENV).ok();
         // SAFETY: single-threaded test/init context
-        unsafe { std::env::set_var(GEMINI_CLI_PATH_ENV, "   "); }
+        unsafe {
+            std::env::set_var(GEMINI_CLI_PATH_ENV, "   ");
+        }
         let provider = GeminiCliProvider::new();
         assert_eq!(provider.binary_path, PathBuf::from("gemini"));
         match orig {
@@ -309,9 +317,10 @@ mod tests {
     #[test]
     fn validate_temperature_rejects_custom_value() {
         let err = GeminiCliProvider::validate_temperature(0.2).unwrap_err();
-        assert!(err
-            .to_string()
-            .contains("temperature unsupported by Gemini CLI"));
+        assert!(
+            err.to_string()
+                .contains("temperature unsupported by Gemini CLI")
+        );
     }
 
     #[tokio::test]

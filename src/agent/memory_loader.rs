@@ -1,5 +1,5 @@
 use crate::memory::{self, Memory};
-use crate::security::{sanitize_for_model_input, ModelInputSource};
+use crate::security::{ModelInputSource, sanitize_for_model_input};
 use async_trait::async_trait;
 use std::fmt::Write;
 
@@ -208,6 +208,9 @@ mod tests {
                 timestamp: "now".into(),
                 session_id: None,
                 score: None,
+                namespace: "default".into(),
+                importance: None,
+                superseded_by: None,
             }])
         }
 

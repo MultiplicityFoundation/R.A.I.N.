@@ -1062,11 +1062,7 @@ impl SlackChannel {
             .unwrap_or_default()
             .trim()
             .to_ascii_lowercase();
-        if mime.is_empty() {
-            None
-        } else {
-            Some(mime)
-        }
+        if mime.is_empty() { None } else { Some(mime) }
     }
 
     fn is_supported_image_mime(mime: &str) -> bool {

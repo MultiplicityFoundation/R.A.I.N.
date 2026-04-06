@@ -1,8 +1,8 @@
-use crate::auth::openai_oauth::extract_account_id_from_jwt;
 use crate::auth::AuthService;
+use crate::auth::openai_oauth::extract_account_id_from_jwt;
 use crate::multimodal;
-use crate::providers::traits::{ChatMessage, Provider, ProviderCapabilities};
 use crate::providers::ProviderRuntimeOptions;
+use crate::providers::traits::{ChatMessage, Provider, ProviderCapabilities};
 use async_trait::async_trait;
 use futures_util::StreamExt;
 use reqwest::Client;
@@ -786,10 +786,14 @@ mod tests {
         fn drop(&mut self) {
             if let Some(original) = self.original.as_deref() {
                 // SAFETY: single-threaded test/init context
-                unsafe { std::env::set_var(self.key, original); }
+                unsafe {
+                    std::env::set_var(self.key, original);
+                }
             } else {
                 // SAFETY: single-threaded test/init context
-                unsafe { std::env::remove_var(self.key); }
+                unsafe {
+                    std::env::remove_var(self.key);
+                }
             }
         }
     }
@@ -1013,8 +1017,7 @@ data: [DONE]
 
     #[test]
     fn decode_utf8_stream_chunks_handles_multibyte_split_across_chunks() {
-        let payload =
-            "data: {\"type\":\"response.output_text.delta\",\"delta\":\"Hello 世\"}\n\ndata: [DONE]\n";
+        let payload = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"Hello 世\"}\n\ndata: [DONE]\n";
         let bytes = payload.as_bytes();
         let split_at = payload.find('世').unwrap() + 1;
 
