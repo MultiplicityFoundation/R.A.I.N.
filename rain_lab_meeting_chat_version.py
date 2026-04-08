@@ -215,11 +215,9 @@ from datetime import datetime
 
 import argparse
 
-from graph_bridge import HypergraphManager
-
+from james_library.utilities.graph_bridge import HypergraphManager
 from stagnation_monitor import StagnationMonitor
-
-from hypothesis_tree import HypothesisTree, NodeStatus
+from james_library.utilities.hypothesis_tree import HypothesisTree, NodeStatus
 
 try:
     import msvcrt  # Windows keyboard input detection

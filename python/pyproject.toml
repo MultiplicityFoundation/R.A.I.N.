@@ -39,7 +39,7 @@ dependencies = [
 ]
 
 [project.scripts]
-R.A.I.N.-tools = "R.A.I.N._tools.__main__:main"
+"R.A.I.N.-tools" = "R.A.I.N._tools.__main__:main"
 
 [project.optional-dependencies]
 discord = ["discord.py>=2.3.0"]

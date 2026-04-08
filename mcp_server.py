@@ -271,7 +271,7 @@ def create_mcp_server(
         status (active/proven/disproven), visit counts, and scores.
         """
         try:
-            from hypothesis_tree import HypothesisTree  # noqa: F401
+            from james_library.utilities.hypothesis_tree import HypothesisTree  # noqa: F401
             # This is a read-only snapshot tool — it cannot modify the tree.
             # The actual tree lives in the orchestrator; this returns a
             # placeholder until a running session exports its state.

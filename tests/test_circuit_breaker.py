@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from circuit_breaker import (
+from james_library.utilities.circuit_breaker import (
     CircuitBreakerVerdict,
     LogicFormula,
     ProverResult,
@@ -15,7 +15,7 @@ from circuit_breaker import (
     parse_argument_to_formula,
     run_circuit_breaker,
 )
-from hypothesis_tree import HypothesisTree
+from james_library.utilities.hypothesis_tree import HypothesisTree
 from stagnation_monitor import StagnationMonitor
 
 

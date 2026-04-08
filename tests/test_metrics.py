@@ -10,7 +10,7 @@ Also confirms JSONL persistence and edge-case behaviour.
 
 import json
 
-from rain_metrics import (
+from james_library.utilities.rain_metrics import (
     MetricsTracker,
     compute_citation_accuracy,
     compute_critique_change_rate,

@@ -5,7 +5,7 @@ line-length = 120
 # Exclude vendored / generated code that we don't own
 exclude = [
     "rlm-main/",
-    "hello_os.py",       # 53k-line Colab export — not maintained here
+    "data/hello_os/hello_os.py",   # 53k-line Colab export — not maintained here
     ".git",
     "__pycache__",
 ]

@@ -2,7 +2,7 @@
 
 import pytest
 
-from hypothesis_tree import HypothesisNode, HypothesisTree, NodeStatus
+from james_library.utilities.hypothesis_tree import HypothesisNode, HypothesisTree, NodeStatus
 
 
 # ---------------------------------------------------------------------------

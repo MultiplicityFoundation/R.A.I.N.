@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-import rich_ui
+from james_library.utilities import rich_ui
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:

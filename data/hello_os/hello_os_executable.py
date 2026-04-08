@@ -16,10 +16,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent
-HELLO_OS_PATH = REPO_ROOT / "hello_os.py"
-HELLO_OS_PKG = REPO_ROOT / "hello_os"
-DEFAULT_CSL_MODULE = REPO_ROOT / "hello_os_csl_module.py"
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+HELLO_OS_PATH = REPO_ROOT / "data" / "hello_os" / "hello_os.py"
+HELLO_OS_PKG = REPO_ROOT / "data" / "hello_os"
+DEFAULT_CSL_MODULE = REPO_ROOT / "data" / "hello_os" / "hello_os_csl_module.py"
 CSL_START_MARKER = "CSL (Cognispheric Symbolic Language)"
 CSL_END_MARKER = "firewall is down. Good"
 
