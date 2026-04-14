@@ -54,7 +54,7 @@ jobs:
                     else
                       echo "count=0"
                     fi
-                    echo "files<<'EOF'"
+                    echo "files<<EOF"
                     printf '%s\n' "$files"
                     echo "EOF"
                   } >> "$GITHUB_OUTPUT"
@@ -120,7 +120,7 @@ jobs:
                     else
                       echo "count=0"
                     fi
-                    echo "files<<'EOF'"
+                    echo "files<<EOF"
                     printf '%s\n' "$files"
                     echo "EOF"
                   } >> "$GITHUB_OUTPUT"
